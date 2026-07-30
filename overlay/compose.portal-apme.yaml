@@ -1,0 +1,164 @@
+# Portal + APME Compose Override
+# Usage: podman compose -f compose.yaml -f compose.portal-apme.yaml up -d
+#
+# APME images are pulled from ghcr.io/ansible/apme-*
+# Set APME_IMAGE_TAG in .env to control the version (default: latest)
+#
+# On ARM hosts (macOS Apple Silicon), set APME_PLATFORM=linux/amd64 in .env
+# to pull amd64 images via emulation. On x86_64 hosts, leave it unset.
+
+services:
+
+  # ── PostgreSQL database ──
+  db:
+    container_name: db
+    image: "postgres:16-alpine"
+    volumes:
+      - portal-pgdata:/var/lib/postgresql/data
+    env_file:
+      - path: "./default.env"
+        required: true
+      - path: "./.env"
+        required: false
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── RHDH overrides ──
+  rhdh:
+    environment:
+      ENABLE_AUTH_PROVIDER_MODULE_OVERRIDE: 'true'
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./configs/app-config/app-config.portal-apme.yaml:/opt/app-root/src/configs/app-config/app-config.local.yaml:ro,z
+
+  install-dynamic-plugins:
+    volumes:
+      - ./configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,z
+
+  # ── APME Gateway (REST API + gRPC Reporting) ──
+  apme-gateway:
+    image: ghcr.io/ansible/apme-gateway:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-gateway
+    ports:
+      - "8080:8080"
+    volumes:
+      - apme-gateway-data:/data
+    environment:
+      APME_PRIMARY_ADDRESS: apme-primary:50051
+      APME_DB_PATH: /data/apme.db
+      APME_GATEWAY_GRPC_LISTEN: 0.0.0.0:50060
+      OPENSSL_CONF: ${OPENSSL_CONF:-}
+      OPENSSL_FIPS: "0"
+      SSL_CERT_FILE: /etc/pki/tls/certs/ca-bundle.crt
+      REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-bundle.crt
+    depends_on:
+      apme-primary:
+        condition: service_started
+
+  # ── APME Engine (Primary orchestrator) ──
+  # Validators share this container's network namespace via network_mode (sidecar pattern).
+  # All validators communicate via 127.0.0.1 within the shared namespace.
+  apme-primary:
+    image: ghcr.io/ansible/apme-primary:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-primary
+    volumes:
+      - apme-sessions:/sessions
+    environment:
+      APME_PRIMARY_LISTEN: "0.0.0.0:50051"
+      NATIVE_GRPC_ADDRESS: "127.0.0.1:50055"
+      OPA_GRPC_ADDRESS: "127.0.0.1:50054"
+      ANSIBLE_GRPC_ADDRESS: "127.0.0.1:50053"
+      GITLEAKS_GRPC_ADDRESS: "127.0.0.1:50056"
+      COLLECTION_HEALTH_GRPC_ADDRESS: "127.0.0.1:50058"
+      DEP_AUDIT_GRPC_ADDRESS: "127.0.0.1:50059"
+      APME_GALAXY_PROXY_URL: "http://127.0.0.1:8765"
+      APME_REPORTING_ENDPOINT: "apme-gateway:50060"
+      OPENSSL_CONF: ${OPENSSL_CONF:-}
+
+  # ── APME Validators (share primary's network namespace) ──
+  apme-native:
+    image: ghcr.io/ansible/apme-native:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-native
+    network_mode: "service:apme-primary"
+    depends_on:
+      apme-primary:
+        condition: service_started
+
+  apme-opa:
+    image: ghcr.io/ansible/apme-opa:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-opa
+    network_mode: "service:apme-primary"
+    depends_on:
+      apme-primary:
+        condition: service_started
+
+  apme-ansible:
+    image: ghcr.io/ansible/apme-ansible:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-ansible
+    network_mode: "service:apme-primary"
+    environment:
+      OPENSSL_CONF: ${OPENSSL_CONF:-}
+    depends_on:
+      apme-primary:
+        condition: service_started
+
+  apme-gitleaks:
+    image: ghcr.io/ansible/apme-gitleaks:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-gitleaks
+    network_mode: "service:apme-primary"
+    depends_on:
+      apme-primary:
+        condition: service_started
+
+  apme-collection-health:
+    image: ghcr.io/ansible/apme-collection-health:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-collection-health
+    network_mode: "service:apme-primary"
+    environment:
+      OPENSSL_CONF: ${OPENSSL_CONF:-}
+    depends_on:
+      apme-primary:
+        condition: service_started
+
+  apme-dep-audit:
+    image: ghcr.io/ansible/apme-dep-audit:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-dep-audit
+    network_mode: "service:apme-primary"
+    environment:
+      OPENSSL_CONF: ${OPENSSL_CONF:-}
+    depends_on:
+      apme-primary:
+        condition: service_started
+
+  apme-galaxy-proxy:
+    image: ghcr.io/ansible/apme-galaxy-proxy:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-galaxy-proxy
+    network_mode: "service:apme-primary"
+    environment:
+      OPENSSL_CONF: ${OPENSSL_CONF:-}
+    depends_on:
+      apme-primary:
+        condition: service_started
+
+volumes:
+  portal-pgdata:
+  apme-gateway-data:
+  apme-sessions:

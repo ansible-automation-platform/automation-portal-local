@@ -1,0 +1,373 @@
+---
+name: EAP / Build Distributable
+
+run-name: >-
+  EAP / ${{ inputs.plugin_source == 'upstream_branch'
+    && format('build {0}', inputs.upstream_branch)
+    || format('artifacts from run {0}', inputs.artifact_run_id) }}
+  / apme:${{ inputs.apme_image_tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin_source:
+        description: 'How to get portal plugin tarballs'
+        type: choice
+        default: 'upstream_branch'
+        options:
+          - upstream_branch
+          - artifact_download
+      upstream_branch:
+        description: >-
+          Branch from ansible/ansible-backstage-plugins to build plugins from
+          (e.g. feat/apme-eap-next-ui-workflow). Required when plugin_source = upstream_branch.
+        type: string
+        required: false
+        default: 'feat/apme-eap-next-ui-workflow'
+      artifact_run_id:
+        description: >-
+          Workflow run ID from ansible-rhdh-plugins early-access build.
+          Required when plugin_source = artifact_download.
+        type: string
+        required: false
+        default: ''
+      apme_image_tag:
+        description: 'APME image tag from ghcr.io/ansible (e.g. latest, 2026.7.3, sha-abc1234)'
+        type: string
+        required: false
+        default: 'latest'
+      rhdh_image:
+        description: 'RHDH base image'
+        type: string
+        required: false
+        default: 'quay.io/rhdh-community/rhdh:1.10'
+      node_version:
+        description: 'Node.js version for plugin builds'
+        type: string
+        required: false
+        default: '22.x'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.plugin_source || 'default' }}
+  cancel-in-progress: true
+
+env:
+  APME_SERVICES: "gateway primary native opa ansible gitleaks collection-health dep-audit galaxy-proxy"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        run: |
+          if [ "${{ inputs.plugin_source }}" = "upstream_branch" ] && [ -z "${{ inputs.upstream_branch }}" ]; then
+            echo "::error::upstream_branch is required when plugin_source = upstream_branch"
+            exit 1
+          fi
+          if [ "${{ inputs.plugin_source }}" = "artifact_download" ] && [ -z "${{ inputs.artifact_run_id }}" ]; then
+            echo "::error::artifact_run_id is required when plugin_source = artifact_download"
+            exit 1
+          fi
+
+  build-plugins:
+    needs: validate
+    if: inputs.plugin_source == 'upstream_branch'
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - name: Checkout automation-portal-local
+        uses: actions/checkout@v6
+
+      - name: Checkout upstream plugins
+        uses: actions/checkout@v6
+        with:
+          repository: ansible/ansible-backstage-plugins
+          ref: ${{ inputs.upstream_branch }}
+          path: ansible-backstage-plugins
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: yarn
+          cache-dependency-path: ansible-backstage-plugins/yarn.lock
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Set build metadata
+        id: meta
+        run: |
+          SHA="$(git -C ansible-backstage-plugins rev-parse --short HEAD)"
+          TS="$(date -u +%Y%m%d%H%M%S)"
+          BRANCH_SLUG="$(echo "${{ inputs.upstream_branch }}" | sed 's|[^a-zA-Z0-9]|-|g')"
+          echo "version=${BRANCH_SLUG}-${SHA}-${TS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and pack plugins
+        working-directory: ansible-backstage-plugins
+        env:
+          BUILD_TYPE: portal
+        run: |
+          yarn install
+          yarn tsc
+
+          # Build common packages first
+          for common_dir in plugins/*-common; do
+            [ -d "$common_dir" ] && (cd "$common_dir" && yarn build)
+          done
+
+          PACK_DIR="${GITHUB_WORKSPACE}/plugin-tarballs"
+          mkdir -p "$PACK_DIR"
+
+          for plugin_dir in plugins/*; do
+            [ -d "$plugin_dir" ] || continue
+            plugin_name=$(basename "$plugin_dir")
+            [[ "$plugin_name" == *-common ]] && continue
+            [ "$plugin_name" == "backstage-rhaap" ] && continue
+            grep -q '"export-dynamic"' "$plugin_dir/package.json" 2>/dev/null || continue
+
+            echo "=== Building $plugin_name ==="
+            (
+              cd "$plugin_dir"
+              yarn build
+              yarn export-dynamic
+              cd dist-dynamic
+              npm pack --pack-destination "$PACK_DIR"
+            )
+          done
+
+          echo "Plugin tarballs:"
+          ls -la "$PACK_DIR"
+
+      - name: Upload plugin tarballs
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-tarballs
+          path: plugin-tarballs/
+          if-no-files-found: error
+          retention-days: 1
+
+  download-plugins:
+    needs: validate
+    if: inputs.plugin_source == 'artifact_download'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts from ansible-rhdh-plugins
+        uses: actions/download-artifact@v7
+        with:
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ secrets.CROSS_REPO_TOKEN }}
+          repository: ansible-automation-platform/ansible-rhdh-plugins
+          path: raw-artifacts
+
+      - name: Extract plugin tarballs
+        run: |
+          mkdir -p plugin-tarballs
+          # Early-access artifacts contain a bundle tar.gz with individual tarballs inside
+          for bundle in raw-artifacts/early-access-plugins-*.tar.gz; do
+            [ -f "$bundle" ] || continue
+            tar -xzf "$bundle" -C plugin-tarballs
+          done
+          # Also check for loose tarballs
+          find raw-artifacts -name "*.tgz" -exec cp {} plugin-tarballs/ \;
+          echo "Plugin tarballs:"
+          ls -la plugin-tarballs/
+
+      - name: Upload plugin tarballs
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-tarballs
+          path: plugin-tarballs/
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble:
+    needs: [build-plugins, download-plugins]
+    if: |
+      always() &&
+      (needs.build-plugins.result == 'success' || needs.build-plugins.result == 'skipped') &&
+      (needs.download-plugins.result == 'success' || needs.download-plugins.result == 'skipped') &&
+      (needs.build-plugins.result == 'success' || needs.download-plugins.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Download plugin tarballs
+        uses: actions/download-artifact@v7
+        with:
+          name: plugin-tarballs
+          path: plugin-tarballs
+
+      - name: Set version
+        id: version
+        run: |
+          SHA="$(git rev-parse --short HEAD)"
+          TS="$(date -u +%Y%m%d%H%M%S)"
+          echo "version=${SHA}-${TS}" >> "$GITHUB_OUTPUT"
+
+      - name: Install skopeo
+        run: |
+          if ! command -v skopeo &>/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
+          fi
+          skopeo --version
+
+      - name: Pull and save APME images (multi-arch)
+        run: |
+          mkdir -p images
+          for svc in $APME_SERVICES; do
+            IMAGE="docker://ghcr.io/ansible/apme-${svc}:${{ inputs.apme_image_tag }}"
+            ARCHIVE="images/apme-${svc}.tar.gz"
+            echo "Copying ${IMAGE} (all architectures)..."
+            # --all preserves the full multi-arch manifest (OCI image index).
+            # When the customer runs `podman load`, their runtime picks the
+            # correct architecture automatically (amd64 on Linux, arm64 on macOS).
+            skopeo copy --all "${IMAGE}" "oci-archive:${ARCHIVE}"
+          done
+          # Also save postgres for fully air-gapped use
+          echo "Copying postgres:16-alpine (all architectures)..."
+          skopeo copy --all docker://postgres:16-alpine oci-archive:images/postgres-16-alpine.tar.gz
+          echo "Image archives:"
+          ls -lh images/
+
+      - name: Assemble distributable
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DIST_DIR="dist/automation-portal-local-${VERSION}"
+          mkdir -p "$DIST_DIR"
+
+          # Copy rhdh-local base files
+          cp rhdh-local/compose.yaml "$DIST_DIR/"
+          cp rhdh-local/default.env "$DIST_DIR/"
+          cp rhdh-local/prepare-and-install-dynamic-plugins.sh "$DIST_DIR/"
+          cp rhdh-local/wait-for-plugins-and-start.sh "$DIST_DIR/"
+          chmod +x "$DIST_DIR"/*.sh
+
+          # Copy rhdh-local configs
+          cp -r rhdh-local/configs "$DIST_DIR/"
+
+          # Copy overlay files into place
+          cp overlay/compose.portal-apme.yaml "$DIST_DIR/"
+          cp overlay/app-config.portal-apme.yaml "$DIST_DIR/configs/app-config/"
+          cp overlay/dynamic-plugins.portal-apme.yaml "$DIST_DIR/configs/dynamic-plugins/"
+
+          # Copy plugin tarballs (fail if none found)
+          mkdir -p "$DIST_DIR/local-plugins/portal-apme"
+          PLUGIN_COUNT=$(find plugin-tarballs -name '*.tgz' 2>/dev/null | wc -l)
+          if [ "$PLUGIN_COUNT" -eq 0 ]; then
+            echo "::error::No plugin tarballs found — cannot assemble distributable"
+            exit 1
+          fi
+          cp plugin-tarballs/*.tgz "$DIST_DIR/local-plugins/portal-apme/"
+          cp plugin-tarballs/*.integrity "$DIST_DIR/local-plugins/portal-apme/" 2>/dev/null || true
+
+          # Update dynamic-plugins YAML to match actual tarball filenames
+          PLUGINS_YAML="$DIST_DIR/configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml"
+          for tgz in "$DIST_DIR/local-plugins/portal-apme/"*.tgz; do
+            filename=$(basename "$tgz")
+            base=$(echo "$filename" | sed -E 's/-[0-9]+\.[0-9]+\.[0-9]+.*\.tgz$//')
+            sed -i -E "s|${base}-[^ ]*\.tgz|${filename}|g" "$PLUGINS_YAML"
+          done
+
+          # Copy APME image archives
+          cp -r images "$DIST_DIR/"
+
+          # Copy scripts for distributable (use repo scripts as templates)
+          mkdir -p "$DIST_DIR/scripts"
+          cp scripts/load-images.sh "$DIST_DIR/scripts/"
+          chmod +x "$DIST_DIR/scripts/"*.sh
+
+          # Generate simplified scripts for the distributable (no submodule logic)
+          cat > "$DIST_DIR/scripts/start.sh" <<'STARTEOF'
+#!/bin/bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+command -v podman >/dev/null 2>&1 || { echo "ERROR: podman is required."; exit 1; }
+
+if [ ! -f "$ROOT_DIR/.env" ]; then
+  echo "ERROR: .env not found."
+  echo "  cp .env.example .env"
+  echo "  # Fill in AAP_HOST_URL, AAP_TOKEN, OAUTH credentials"
+  exit 1
+fi
+
+PLUGIN_COUNT=$(find "$ROOT_DIR/local-plugins/portal-apme" -name '*.tgz' 2>/dev/null | wc -l)
+if [ "$PLUGIN_COUNT" -eq 0 ]; then
+  echo "ERROR: No plugin tarballs found in local-plugins/portal-apme/"
+  exit 1
+fi
+
+if [ -d "$ROOT_DIR/images" ]; then
+  "$SCRIPT_DIR/load-images.sh"
+fi
+
+cd "$ROOT_DIR"
+podman compose -f compose.yaml -f compose.portal-apme.yaml up -d
+
+echo ""
+echo "Portal is starting at http://localhost:7007"
+echo "APME Gateway at http://localhost:8080"
+echo "Stop: ./scripts/stop.sh"
+STARTEOF
+
+          cat > "$DIST_DIR/scripts/stop.sh" <<'STOPEOF'
+#!/bin/bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+podman compose -f compose.yaml -f compose.portal-apme.yaml down
+STOPEOF
+
+          cat > "$DIST_DIR/scripts/cleanup.sh" <<'CLEANEOF'
+#!/bin/bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+# Source .env for APME_IMAGE_TAG
+[ -f "$ROOT_DIR/.env" ] && set -a && . "$ROOT_DIR/.env" && set +a
+podman compose -f compose.yaml -f compose.portal-apme.yaml down -v 2>/dev/null || true
+if [ "${1:-}" = "--remove-images" ]; then
+  APME_TAG="${APME_IMAGE_TAG:-latest}"
+  for svc in gateway primary native opa ansible gitleaks collection-health dep-audit galaxy-proxy; do
+    podman rmi "ghcr.io/ansible/apme-${svc}:${APME_TAG}" 2>/dev/null || true
+  done
+  podman rmi "postgres:16-alpine" 2>/dev/null || true
+fi
+echo "Cleanup complete."
+CLEANEOF
+
+          chmod +x "$DIST_DIR/scripts/"*.sh
+
+          # Copy env example and README
+          cp .env.example "$DIST_DIR/"
+          cp README.md "$DIST_DIR/"
+
+          # Set RHDH_IMAGE and APME_IMAGE_TAG in the env example
+          sed -i "s|APME_IMAGE_TAG=.*|APME_IMAGE_TAG=${{ inputs.apme_image_tag }}|" "$DIST_DIR/.env.example"
+          sed -i "s|RHDH_IMAGE=.*|RHDH_IMAGE=${{ inputs.rhdh_image }}|" "$DIST_DIR/.env.example"
+
+          echo "Distributable contents:"
+          find "$DIST_DIR" -type f | head -50
+
+      - name: Create tar archive
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          tar -czvf "automation-portal-local-${VERSION}.tar.gz" -C dist "automation-portal-local-${VERSION}"
+          ls -lh "automation-portal-local-${VERSION}.tar.gz"
+
+      - name: Upload distributable
+        uses: actions/upload-artifact@v7
+        with:
+          name: automation-portal-local-${{ steps.version.outputs.version }}
+          path: automation-portal-local-*.tar.gz
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,154 @@
+# Portal + APME Dynamic Plugins
+# Matches the ansible-portal-chart helm values.yaml plugin list.
+# Plugin tarballs are loaded from local-plugins/portal-apme/*.tgz
+
+includes:
+  - dynamic-plugins.default.yaml
+
+plugins:
+  # ── Portal plugins (from local tarballs) ──
+
+  # RBAC
+  - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
+    disabled: false
+
+  # Scaffolder backend (RHAAP)
+  - package: ./local-plugins/portal-apme/ansible-plugin-scaffolder-backend-module-backstage-rhaap-dynamic-2.2.3.tgz
+    disabled: false
+    pluginConfig:
+      dynamicPlugins:
+        backend:
+          ansible.plugin-scaffolder-backend-module-backstage-rhaap:
+
+  # Catalog backend (RHAAP)
+  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-catalog-backend-module-rhaap-dynamic-2.2.3.tgz
+    disabled: false
+
+  # Self-Service frontend
+  - package: ./local-plugins/portal-apme/ansible-plugin-backstage-self-service-dynamic-2.2.3.tgz
+    disabled: false
+    pluginConfig:
+      dynamicPlugins:
+        frontend:
+          ansible.plugin-backstage-self-service:
+            signInPage:
+              importName: SignInPage
+            providerSettings:
+              - title: RHAAP
+                description: Sign in with RHAAP
+                provider: ansible.auth.rhaap
+            scaffolderFieldExtensions:
+              - importName: AAPTokenFieldExtension
+              - importName: AAPResourcePickerExtension
+              - importName: AdditionalBuildStepsPickerFieldExtension
+              - importName: BaseImagePickerFieldExtension
+              - importName: CollectionsPickerFieldExtension
+              - importName: EEFileNamePickerExtension
+              - importName: FileUploadPickerFieldExtension
+              - importName: PackagesPickerFieldExtension
+              - importName: MCPServersPickerFieldExtension
+              - importName: ScmSelectorFieldExtension
+            dynamicRoutes:
+              - importName: LandingPage
+                path: /
+              - importName: SelfServicePage
+                path: /self-service
+              - importName: TemplatesPage
+                path: /self-service/*
+                menuItem:
+                  importName: TemplatesSidebarItem
+              - importName: HistoryPage
+                path: /self-service/create/tasks
+                menuItem:
+                  importName: HistorySidebarItem
+              - importName: EEPage
+                path: /self-service/ee/*
+              - importName: EEPage
+                path: /self-service/ee
+                menuItem:
+                  importName: EEBuilderSidebarItem
+              - importName: CollectionsPage
+                path: /self-service/collections
+                menuItem:
+                  importName: CollectionsSidebarItem
+              - importName: CollectionsPage
+                path: /self-service/collections/*
+              - importName: GitRepositoriesPage
+                path: /self-service/repositories
+                menuItem:
+                  importName: GitRepositoriesSidebarItem
+              - importName: GitRepositoriesPage
+                path: /self-service/repositories/*
+            mountPoints:
+              - mountPoint: application/listener
+                importName: LocationListener
+              - mountPoint: application/listener
+                importName: AppThemeFixer
+              - importName: AAPLogoutButton
+                mountPoint: global.header/profile
+                config:
+                  priority: 100
+
+  # Auth backend (RHAAP OAuth)
+  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-2.2.3.tgz
+    disabled: false
+    pluginConfig: {}
+
+  # ── SCM plugins (from GHCR — same as helm chart) ──
+
+  # GitHub auth provider (needed for SCM write access / push branch / create PR)
+  - package: >-
+      oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-auth-backend-module-github-provider:bs_1.49.4__0.5.1!backstage-plugin-auth-backend-module-github-provider
+    disabled: false
+
+  # GitLab auth provider
+  - package: >-
+      oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-auth-backend-module-gitlab-provider:bs_1.49.4__0.4.1!backstage-plugin-auth-backend-module-gitlab-provider
+    disabled: false
+
+  # GitHub scaffolder backend
+  - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic
+    disabled: false
+
+  # GitLab scaffolder backend
+  - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-gitlab-dynamic
+    disabled: false
+
+  # ── APME plugins (from local tarballs) ──
+
+  # APME frontend UI
+  - package: ./local-plugins/portal-apme/ansible-plugin-backstage-apme-dynamic-0.1.0.tgz
+    disabled: false
+
+  # APME catalog backend module
+  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-catalog-backend-module-apme-dynamic-0.1.0.tgz
+    disabled: false
+
+  # ── Disabled RHDH default plugins (match helm chart) ──
+
+  - package: ./dynamic-plugins/dist/backstage-plugin-techdocs
+    disabled: true
+  - package: ./dynamic-plugins/dist/backstage-plugin-techdocs-backend-dynamic
+    disabled: true
+  - package: ./dynamic-plugins/dist/backstage-plugin-techdocs-module-addons-contrib
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-marketplace-dynamic
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-quickstart
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-adoption-insights
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-dynamic-home-page
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-marketplace
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-extensions
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-global-floating-action-button
+    disabled: true
+  - package: ./dynamic-plugins/dist/backstage-community-plugin-scaffolder-backend-module-quay-dynamic
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-lightspeed
+    disabled: true
+  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-lightspeed-backend-dynamic
+    disabled: true

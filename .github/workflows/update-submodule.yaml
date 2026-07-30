@@ -1,0 +1,68 @@
+---
+name: Update rhdh-local submodule
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly, Monday 6am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Update submodule to latest upstream
+        run: |
+          git submodule update --remote rhdh-local
+          echo "rhdh-local now at:"
+          git -C rhdh-local log --oneline -1
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet rhdh-local; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "rhdh-local is already up to date."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            NEW_SHA="$(git -C rhdh-local rev-parse --short HEAD)"
+            echo "sha=${NEW_SHA}" >> "$GITHUB_OUTPUT"
+            echo "rhdh-local updated to ${NEW_SHA}"
+          fi
+
+      - name: Create PR
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="chore/update-rhdh-local-${{ steps.changes.outputs.sha }}"
+          git checkout -b "$BRANCH"
+          git add rhdh-local
+          git commit -m "chore: update rhdh-local submodule to ${{ steps.changes.outputs.sha }}"
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: update rhdh-local submodule" \
+            --body "$(cat <<'EOF'
+          ## Summary
+
+          Automated weekly update of the `rhdh-local` submodule to the latest upstream `main`.
+
+          **New commit:** `${{ steps.changes.outputs.sha }}`
+
+          ## Checklist
+
+          - [ ] Review rhdh-local changelog for breaking changes
+          - [ ] Verify overlay files are still compatible
+          EOF
+          )" \
+            --base main
