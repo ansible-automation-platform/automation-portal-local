@@ -1,0 +1,127 @@
+---
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Validate workflow YAML syntax
+        run: |
+          python3 -c "
+          import yaml, sys, pathlib
+          errors = 0
+          for f in pathlib.Path('.github/workflows').glob('*.yaml'):
+              try:
+                  yaml.safe_load(f.read_text())
+                  print(f'  ✓ {f}')
+              except yaml.YAMLError as e:
+                  print(f'  ✗ {f}: {e}')
+                  errors += 1
+          sys.exit(errors)
+          "
+
+      - name: Validate compose overlay syntax
+        run: |
+          python3 -c "
+          import yaml, sys
+          try:
+              yaml.safe_load(open('overlay/compose.portal-apme.yaml'))
+              print('  ✓ overlay/compose.portal-apme.yaml')
+          except yaml.YAMLError as e:
+              print(f'  ✗ {e}')
+              sys.exit(1)
+          "
+
+      - name: Validate dynamic-plugins YAML syntax
+        run: |
+          python3 -c "
+          import yaml, sys
+          try:
+              yaml.safe_load(open('overlay/dynamic-plugins.portal-apme.yaml'))
+              print('  ✓ overlay/dynamic-plugins.portal-apme.yaml')
+          except yaml.YAMLError as e:
+              print(f'  ✗ {e}')
+              sys.exit(1)
+          "
+
+      - name: Validate app-config YAML syntax
+        run: |
+          python3 -c "
+          import yaml, sys
+          try:
+              yaml.safe_load(open('overlay/app-config.portal-apme.yaml'))
+              print('  ✓ overlay/app-config.portal-apme.yaml')
+          except yaml.YAMLError as e:
+              print(f'  ✗ {e}')
+              sys.exit(1)
+          "
+
+      - name: Shellcheck scripts
+        run: |
+          sudo apt-get install -y -qq shellcheck
+          shellcheck scripts/*.sh scripts/dist/*.sh
+
+  secrets-check:
+    name: Secrets check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Check for hardcoded secrets
+        run: |
+          FOUND=0
+          # Check for real tokens/passwords (not placeholders or env var refs)
+          for f in overlay/*.yaml .env.example README.md; do
+            if grep -Pn '(ghp_[a-zA-Z0-9]{36}|glpat-[a-zA-Z0-9-]{20}|password:\s*[a-zA-Z0-9]{8,})' "$f" 2>/dev/null; then
+              echo "::error file=${f}::Possible hardcoded secret found"
+              FOUND=1
+            fi
+          done
+          # Ensure .env.example only has placeholders
+          if grep -Pn '^[A-Z_]+=(?!<|https?://|quay|latest|postgres|0|$)' .env.example | grep -v '^#' | grep -v 'IMAGE'; then
+            echo "::error file=.env.example::Non-placeholder value found"
+            FOUND=1
+          fi
+          if [ "$FOUND" -eq 1 ]; then
+            exit 1
+          fi
+          echo "No hardcoded secrets found."
+
+  plugin-refs:
+    name: Plugin reference check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Verify plugin tarball references are consistent
+        run: |
+          echo "Checking that all .tgz references in dynamic-plugins YAML follow the expected naming pattern..."
+          YAML="overlay/dynamic-plugins.portal-apme.yaml"
+          ERRORS=0
+          while IFS= read -r line; do
+            tgz=$(echo "$line" | grep -oP '[a-z][\w.-]+-dynamic-[\w.+-]+\.tgz' || true)
+            if [ -n "$tgz" ]; then
+              echo "  ✓ $tgz"
+            fi
+          done < "$YAML"
+          # Ensure no broken references (empty .tgz filenames)
+          if grep -P '\.tgz\s*$' "$YAML" | grep -P '/\.tgz'; then
+            echo "::error::Empty tarball filename found in $YAML"
+            ERRORS=1
+          fi
+          exit $ERRORS
