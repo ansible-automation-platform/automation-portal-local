@@ -279,72 +279,12 @@ jobs:
           # Copy APME image archives
           cp -r images "$DIST_DIR/"
 
-          # Copy scripts for distributable (use repo scripts as templates)
+          # Copy distributable scripts (simplified versions without submodule logic)
           mkdir -p "$DIST_DIR/scripts"
+          cp scripts/dist/start.sh "$DIST_DIR/scripts/"
+          cp scripts/dist/stop.sh "$DIST_DIR/scripts/"
+          cp scripts/dist/cleanup.sh "$DIST_DIR/scripts/"
           cp scripts/load-images.sh "$DIST_DIR/scripts/"
-          chmod +x "$DIST_DIR/scripts/"*.sh
-
-          # Generate simplified scripts for the distributable (no submodule logic)
-          cat > "$DIST_DIR/scripts/start.sh" <<'STARTEOF'
-#!/bin/bash
-set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-
-command -v podman >/dev/null 2>&1 || { echo "ERROR: podman is required."; exit 1; }
-
-if [ ! -f "$ROOT_DIR/.env" ]; then
-  echo "ERROR: .env not found."
-  echo "  cp .env.example .env"
-  echo "  # Fill in AAP_HOST_URL, AAP_TOKEN, OAUTH credentials"
-  exit 1
-fi
-
-PLUGIN_COUNT=$(find "$ROOT_DIR/local-plugins/portal-apme" -name '*.tgz' 2>/dev/null | wc -l)
-if [ "$PLUGIN_COUNT" -eq 0 ]; then
-  echo "ERROR: No plugin tarballs found in local-plugins/portal-apme/"
-  exit 1
-fi
-
-if [ -d "$ROOT_DIR/images" ]; then
-  "$SCRIPT_DIR/load-images.sh"
-fi
-
-cd "$ROOT_DIR"
-podman compose -f compose.yaml -f compose.portal-apme.yaml up -d
-
-echo ""
-echo "Portal is starting at http://localhost:7007"
-echo "APME Gateway at http://localhost:8080"
-echo "Stop: ./scripts/stop.sh"
-STARTEOF
-
-          cat > "$DIST_DIR/scripts/stop.sh" <<'STOPEOF'
-#!/bin/bash
-set -euo pipefail
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT_DIR"
-podman compose -f compose.yaml -f compose.portal-apme.yaml down
-STOPEOF
-
-          cat > "$DIST_DIR/scripts/cleanup.sh" <<'CLEANEOF'
-#!/bin/bash
-set -euo pipefail
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT_DIR"
-# Source .env for APME_IMAGE_TAG
-[ -f "$ROOT_DIR/.env" ] && set -a && . "$ROOT_DIR/.env" && set +a
-podman compose -f compose.yaml -f compose.portal-apme.yaml down -v 2>/dev/null || true
-if [ "${1:-}" = "--remove-images" ]; then
-  APME_TAG="${APME_IMAGE_TAG:-latest}"
-  for svc in gateway primary native opa ansible gitleaks collection-health dep-audit galaxy-proxy; do
-    podman rmi "ghcr.io/ansible/apme-${svc}:${APME_TAG}" 2>/dev/null || true
-  done
-  podman rmi "postgres:16-alpine" 2>/dev/null || true
-fi
-echo "Cleanup complete."
-CLEANEOF
-
           chmod +x "$DIST_DIR/scripts/"*.sh
 
           # Copy env example and README
