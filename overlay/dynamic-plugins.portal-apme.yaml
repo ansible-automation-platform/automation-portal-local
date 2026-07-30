@@ -1,12 +1,12 @@
-# Portal + APME Early-Access Dynamic Plugins
+# Portal + APME Dynamic Plugins
 # Matches the ansible-portal-chart helm values.yaml plugin list.
-# Before using: podman load < early-access-plugins-*.oci.tar.gz
+# Plugin tarballs are loaded from local-plugins/portal-apme/*.tgz
 
 includes:
   - dynamic-plugins.default.yaml
 
 plugins:
-  # ── Portal plugins (from early-access OCI image) ──
+  # ── Portal plugins (from local tarballs) ──
 
   # RBAC
   - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
@@ -114,7 +114,7 @@ plugins:
   - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-gitlab-dynamic
     disabled: false
 
-  # ── APME plugins (from early-access OCI image) ──
+  # ── APME plugins (from local tarballs) ──
 
   # APME frontend UI
   - package: ./local-plugins/portal-apme/ansible-plugin-backstage-apme-dynamic-0.1.0.tgz

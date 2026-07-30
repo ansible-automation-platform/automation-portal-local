@@ -27,7 +27,7 @@ APME Gateway: http://localhost:8080
 
 ## Prerequisites
 
-- **Podman** 4.x+ with `podman compose` (or Docker with `docker compose`)
+- **Podman** 4.x+ with `podman compose`
 - **git** (for submodule management)
 - **Node.js** 22.x + Corepack (for building plugins locally)
 - **8 GB+ RAM** (RHDH + 9 APME containers + PostgreSQL)
@@ -52,11 +52,7 @@ Use this when you are actively developing plugins and want to test your changes 
 ./scripts/build-plugins.sh /path/to/ansible-backstage-plugins feat/apme-eap-next-ui-workflow
 ```
 
-The build script will:
-1. Install dependencies and type-check
-2. Build all `*-common` packages first (shared dependencies)
-3. For each plugin with an `export-dynamic` script: build, export as RHDH dynamic plugin, and `npm pack` into `local-plugins/portal-apme/`
-4. Skip `backstage-rhaap` (RHDH-only, not used in Portal mode)
+The build script delegates to the upstream repo's `build.sh` with `BUILD_TYPE=portal`, then packs each plugin's `dist-dynamic` output into `local-plugins/portal-apme/`. It also updates `overlay/dynamic-plugins.portal-apme.yaml` with the actual tarball filenames.
 
 **What gets built (Portal mode):**
 
@@ -96,6 +92,7 @@ Use this when you want pre-built plugins from a CI run — no local Node.js or b
    # The artifact contains a bundle tar.gz
    tar -xzf early-access-plugins-*.tar.gz -C local-plugins/portal-apme/
    ```
+5. Update `overlay/dynamic-plugins.portal-apme.yaml` tarball filenames to match the downloaded versions. The `build-plugins.sh` script does this automatically for local builds, but for CI artifacts you need to update the filenames manually or re-run: `./scripts/build-plugins.sh` after placing tarballs.
 
 **From automation-portal-local EAP workflow:**
 
@@ -114,9 +111,10 @@ Use this when you want pre-built plugins from a CI run — no local Node.js or b
 | `GITHUB_TOKEN` | Yes | — | GitHub PAT for SCM integration |
 | `GITHUB_OAUTH_CLIENT_ID` | No | — | GitHub OAuth app client ID |
 | `GITHUB_OAUTH_CLIENT_SECRET` | No | — | GitHub OAuth app client secret |
+| `GITLAB_TOKEN` | No | — | GitLab PAT (if using GitLab SCM) |
 | `APME_IMAGE_TAG` | No | `latest` | APME container image tag from ghcr.io |
-| `APME_PLATFORM` | No | auto-detected | Set to `linux/amd64` on ARM hosts (macOS Apple Silicon). Auto-set by `start.sh`. |
 | `RHDH_IMAGE` | No | `quay.io/rhdh-community/rhdh:1.10` | RHDH base image |
+| `CUSTOMER_SUPPORT_URL` | No | Red Hat support | URL for the Support button in the global header |
 | `POSTGRES_PASSWORD` | No | `postgres` | PostgreSQL password |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | No | `0` | Set to `0` for self-signed certs |
 
@@ -143,11 +141,15 @@ For PMs and EAP coordinators — produce a self-contained tar that customers can
    - `upstream_branch`: e.g. `feat/apme-eap-next-ui-workflow` (if building from source)
    - `artifact_run_id`: workflow run ID from ansible-rhdh-plugins (if using pre-built)
    - `apme_image_tag`: APME version (e.g. `latest`, `2026.7.3`)
+   - `rhdh_image`: RHDH base image (default: `quay.io/rhdh-community/rhdh:1.10`)
+   - `node_version`: Node.js version for plugin builds (default: `22.x`)
 3. Download the `automation-portal-local-*.tar.gz` artifact (retained for 30 days)
+
+**Note:** The `artifact_download` mode requires a `CROSS_REPO_TOKEN` secret with `actions:read` permission on `ansible-automation-platform/ansible-rhdh-plugins`. The default `GITHUB_TOKEN` is repo-scoped only.
 
 The workflow:
 1. Builds or downloads plugin tarballs
-2. Pulls 9 APME container images from `ghcr.io/ansible` and saves them as OCI archives
+2. Pulls APME + PostgreSQL container images from `ghcr.io/ansible` and saves them as multi-arch OCI archives via `skopeo copy --all`
 3. Assembles everything into a self-contained directory with rhdh-local base + overlays + plugins + images + scripts
 4. Creates a distributable `.tar.gz`
 
@@ -162,10 +164,7 @@ cd automation-portal-local-*
 cp .env.example .env
 # Edit .env — fill in AAP_HOST_URL, AAP_TOKEN, OAUTH credentials, GITHUB_TOKEN
 
-# 3. Load APME container images (included in the tar, no internet required)
-./scripts/load-images.sh
-
-# 4. Start the portal
+# 3. Start the portal (auto-loads APME images from images/ if present)
 ./scripts/start.sh
 ```
 

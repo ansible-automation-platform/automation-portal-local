@@ -44,28 +44,27 @@ else
   echo "ERROR: No plugin tarballs found in local-plugins/portal-apme/"
   echo ""
   echo "Get plugins by one of:"
-  echo "  1. Build from upstream:  See README.md 'Building Plugins from Source'"
-  echo "  2. Download from CI:     See README.md 'Using Pre-built Plugins'"
+  echo "  1. Build from upstream:  ./scripts/build-plugins.sh <path-to-upstream>"
+  echo "  2. Download from CI:     See README.md 'Option B: Download from GitHub Actions workflow'"
   exit 1
 fi
 
 # Auto-detect architecture: APME images are amd64-only, so on ARM hosts
-# (macOS Apple Silicon) we need to set APME_PLATFORM for emulation.
+# (macOS Apple Silicon) we need APME_PLATFORM for emulation.
+# Written to a separate .env.platform file to avoid mutating user's .env.
 ARCH=$(uname -m)
 if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
-  if ! grep -q '^APME_PLATFORM=' "$ROOT_DIR/.env" 2>/dev/null; then
-    echo "APME_PLATFORM=linux/amd64" >> "$ROOT_DIR/.env"
-    echo "Detected ARM host — added APME_PLATFORM=linux/amd64 for emulation"
-  fi
-  # UBI10 FIPS provider fails under ARM emulation — disable it for local dev
-  if ! grep -q '^OPENSSL_CONF=' "$ROOT_DIR/.env" 2>/dev/null; then
-    echo "OPENSSL_CONF=/dev/null" >> "$ROOT_DIR/.env"
-    echo "Disabled OpenSSL FIPS provider (incompatible with ARM emulation)"
-  fi
+  cat > "$ROOT_DIR/.env.platform" <<ARMEOF
+APME_PLATFORM=linux/amd64
+OPENSSL_CONF=/dev/null
+ARMEOF
+  echo "Detected ARM host — APME containers will use amd64 emulation"
+else
+  : > "$ROOT_DIR/.env.platform"
 fi
 
-# Copy .env
-cp "$ROOT_DIR/.env" "$RHDH_DIR/.env"
+# Merge .env + .env.platform into rhdh-local
+cat "$ROOT_DIR/.env" "$ROOT_DIR/.env.platform" > "$RHDH_DIR/.env"
 
 # Load APME images if OCI archives exist (distributable tar scenario)
 if [ -d "$ROOT_DIR/images" ] && ls "$ROOT_DIR/images/"*.tar.gz 1>/dev/null 2>&1; then

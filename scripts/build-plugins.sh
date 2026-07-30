@@ -67,7 +67,11 @@ if [ -f "$PLUGINS_YAML" ]; then
     # Extract the base name without version (e.g. "ansible-plugin-backstage-self-service-dynamic")
     # Match any existing version of this plugin in the YAML
     base=$(echo "$filename" | sed -E 's/-[0-9]+\.[0-9]+\.[0-9]+.*\.tgz$//')
-    sed -i '' -E "s|${base}-[^ ]*\.tgz|${filename}|g" "$PLUGINS_YAML"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' -E "s|${base}-[^ ]*\.tgz|${filename}|g" "$PLUGINS_YAML"
+    else
+      sed -i -E "s|${base}-[^ ]*\.tgz|${filename}|g" "$PLUGINS_YAML"
+    fi
   done
 fi
 

@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.env.platform
 
 # Plugin tarballs (built or downloaded, not committed)
 local-plugins/portal-apme/*.tgz

@@ -26,6 +26,7 @@ rm -rf "$RHDH_DIR/local-plugins/portal-apme"
 # Optionally remove APME images
 if [ "${1:-}" = "--remove-images" ]; then
   echo "Removing APME container images..."
+  [ -f "$ROOT_DIR/.env" ] && set -a && . "$ROOT_DIR/.env" && set +a
   APME_TAG="${APME_IMAGE_TAG:-latest}"
   for svc in gateway primary native opa ansible gitleaks collection-health dep-audit galaxy-proxy; do
     podman rmi "ghcr.io/ansible/apme-${svc}:${APME_TAG}" 2>/dev/null || true
