@@ -1,8 +1,11 @@
 ansible:
   apme:
-    baseUrl: http://apme-gateway:8080
+    # Bundled compose: http://apme-gateway:8080 (default APME_BASE_URL).
+    # External APME: set APME_EXTERNAL=1 → default http://host.containers.internal:8080
+    baseUrl: ${APME_BASE_URL}
     checkSSL: false
     enabled: true
+    enableAi: true
     mockMode: false
   creatorService:
     baseUrl: 127.0.0.1
@@ -10,6 +13,7 @@ ansible:
   feedback:
     enabled: false
   rhaap:
+    # Backend → aap-mock on the compose network (or a real Controller when AAP_MOCK=0)
     baseUrl: ${AAP_HOST_URL}
     checkSSL: false
     token: ${AAP_TOKEN}
@@ -25,19 +29,34 @@ app:
     settings: false
   title: Ansible automation portal (Early Access)
 auth:
-  environment: production
+  # Sign in via RHAAP → Almost like AAP mock (user/password). Guest kept as fallback.
+  environment: development
   omitIdentityTokenOwnershipClaim: true
   providers:
+    guest:
+      dangerouslyAllowOutsideDevelopment: true
     github:
+      development:
+        clientId: ${GITHUB_OAUTH_CLIENT_ID}
+        clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
       production:
         clientId: ${GITHUB_OAUTH_CLIENT_ID}
         clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
     rhaap:
+      development:
+        checkSSL: false
+        clientId: ${OAUTH_CLIENT_ID}
+        clientSecret: ${OAUTH_CLIENT_SECRET}
+        # Browser must reach the mock on the host (not the compose DNS name)
+        host: ${AAP_PUBLIC_URL}
+        signIn:
+          resolvers:
+          - resolver: allowNewAAPUserSignIn
       production:
         checkSSL: false
         clientId: ${OAUTH_CLIENT_ID}
         clientSecret: ${OAUTH_CLIENT_SECRET}
-        host: ${AAP_HOST_URL}
+        host: ${AAP_PUBLIC_URL}
         signIn:
           resolvers:
           - resolver: allowNewAAPUserSignIn
@@ -56,6 +75,8 @@ backend:
     - host: github.com
     - host: raw.githubusercontent.com
     - host: localhost
+    - host: aap-mock
+    - host: 127.0.0.1
   request:
     bodyParsing:
       sizeLimit: 10mb
@@ -82,8 +103,10 @@ catalog:
   - rules:
     - allow:
       - Template
-    target: https://raw.githubusercontent.com/ansible/ansible-backstage-plugins/prototype/apme/examples/apme-register-git-repository/template.yaml
-    type: url
+    # Synced from plugins/backstage-apme/templates/apme-register-git-repository
+    # (owned by APME plugin; GitHubRepoUrlField). Do not author a fork under overlay/.
+    target: /opt/app-root/src/configs/catalog/apme-register-git-repository/template.yaml
+    type: file
   orphanStrategy: delete
   processingInterval:
     minutes: 30
@@ -207,9 +230,15 @@ permission:
   rbac:
     admin:
       superUsers:
+      - name: user:default/user
+      - name: user:development/guest
+      - name: user:default/guest
       - name: user:default/admin
       - name: group:default/aap-admins
       users:
+      - name: user:default/user
+      - name: user:development/guest
+      - name: user:default/guest
       - name: user:default/admin
       - name: group:default/aap-admins
     pluginsWithPermission:
