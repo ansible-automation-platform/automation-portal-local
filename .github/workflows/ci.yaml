@@ -102,8 +102,8 @@ jobs:
               FOUND=1
             fi
           done
-          # Ensure .env.example only has placeholders
-          if grep -Pn '^[A-Z_]+=(?!<|https?://|quay|latest|postgres|0|$)' .env.example | grep -v '^#' | grep -v 'IMAGE'; then
+          # Ensure .env.example only has placeholders or known mock defaults
+          if grep -Pn '^[A-Z_]+=(?!<|https?://|quay|latest|postgres|[0-9]+$|/|local-|portal-local|mock|user$|password$)' .env.example | grep -v '^#' | grep -v 'IMAGE'; then
             echo "::error file=.env.example::Non-placeholder value found"
             FOUND=1
           fi
