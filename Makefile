@@ -89,7 +89,7 @@ help: ## Show available targets
 	@printf '  DEV_PROMPT=0            Skip interactive R/F/S menu after make dev\n'
 	@printf '  APME_EXTERNAL=1         Use an already-running APME Gateway\n\n'
 
-dev: check-plugin-parity _check-env _prereqs _submodule _overlays _overlays-dev _env-files _sync-template _export-plugins _seed-extensions _prep-dev-root _load-images ## Start DEV mode (mount dist-dynamic into RHDH)
+dev: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _overlays _overlays-dev _env-files _sync-template _export-plugins _seed-extensions _prep-dev-root _load-images ## Start DEV mode (mount dist-dynamic into RHDH)
 	@echo "Starting services (DEV mounts)…"
 	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F_DEV) up -d
 	@$(MAKE) --no-print-directory _banner-dev
@@ -98,7 +98,7 @@ dev: check-plugin-parity _check-env _prereqs _submodule _overlays _overlays-dev 
 dev-prompt: ## Re-enter the interactive DEV menu (R/F/S) without restarting compose
 	@DEV_PROMPT=1 "$(ROOT_DIR)/scripts/dev-prompt.sh"
 
-start: check-plugin-parity _check-env _prereqs _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
+start: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
 	@echo "Starting services…"
 	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F) up -d
 	@$(MAKE) --no-print-directory _banner
@@ -195,7 +195,7 @@ status: ## Show running containers
 # =====================================================================
 #  Internal targets (prefixed with _)
 # =====================================================================
-.PHONY: _check-env _prereqs _submodule _overlays _overlays-dev \
+.PHONY: _check-env _prereqs _stop-if-running _submodule _overlays _overlays-dev \
         _overlays-tarball _env-files _export-plugins _seed-extensions \
         _load-images _tarballs _sync-template _prep-dev-root \
         _build-tarballs _maybe-build-tarballs \
@@ -210,6 +210,21 @@ _check-env:
 _prereqs:
 	@command -v podman >/dev/null || { echo "ERROR: podman is required."; exit 1; }
 	@command -v git    >/dev/null || { echo "ERROR: git is required."; exit 1; }
+
+_stop-if-running:
+	@if [ -f "$(RHDH_DIR)/compose.portal-apme.yaml" ]; then \
+	  cd $(RHDH_DIR) && \
+	  if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	  RUNNING=$$(podman compose $(COMPOSE_F) ps -q 2>/dev/null | head -1); \
+	  if [ -n "$$RUNNING" ]; then \
+	    echo "Stopping existing stack before switching modes…"; \
+	    if [ -f compose.portal-apme.dev.yaml ]; then \
+	      PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) down; \
+	    else \
+	      podman compose $(COMPOSE_F) down; \
+	    fi; \
+	  fi; \
+	fi
 
 _submodule:
 	@if [ ! -f "$(RHDH_DIR)/compose.yaml" ]; then \
