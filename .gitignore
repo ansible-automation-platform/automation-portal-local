@@ -10,12 +10,18 @@ local-plugins/portal-apme/*.tgz
 # OCI image archives (only present in distributable tar)
 images/
 
-# Files copied into rhdh-local by start.sh (ephemeral)
+# Files copied into rhdh-local by Make / scripts (ephemeral)
 rhdh-local/compose.portal-apme.yaml
+rhdh-local/compose.portal-apme.dev.yaml
 rhdh-local/configs/app-config/app-config.portal-apme.yaml
 rhdh-local/configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml
+rhdh-local/configs/dynamic-plugins/dynamic-plugins.portal-apme.dev.yaml
+rhdh-local/configs/catalog/apme-register-git-repository/
 rhdh-local/local-plugins/portal-apme/
+rhdh-local/local-plugins/portal-apme-dev/
+rhdh-local/dynamic-plugins-root/
 rhdh-local/.env
+rhdh-local/.portal-compose-mode
 
 # IDE / editor
 .vscode/
@@ -27,3 +33,4 @@ rhdh-local/.env
 # OS
 .DS_Store
 Thumbs.db
+aap-mock/node_modules/

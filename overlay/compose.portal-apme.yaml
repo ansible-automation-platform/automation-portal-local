@@ -6,8 +6,41 @@
 #
 # On ARM hosts (macOS Apple Silicon), set APME_PLATFORM=linux/amd64 in .env
 # to pull amd64 images via emulation. On x86_64 hosts, leave it unset.
+#
+# APME stack services use compose profile "apme" (enabled by default via
+# COMPOSE_PROFILES from scripts/lib.sh). Set APME_EXTERNAL=1 to skip them
+# and point RHDH at an already-running Gateway via APME_BASE_URL.
 
 services:
+
+  # ── Almost like AAP (local mock; no real Controller required) ──
+  aap-mock:
+    container_name: aap-mock
+    build:
+      context: ../aap-mock
+    image: localhost/aap-mock:local
+    ports:
+      - "8099:8099"
+    environment:
+      PORT: "8099"
+      AAP_MOCK_USERNAME: ${AAP_MOCK_USERNAME:-user}
+      AAP_MOCK_PASSWORD: ${AAP_MOCK_PASSWORD:-password}
+      AAP_PUBLIC_URL: ${AAP_PUBLIC_URL:-http://localhost:8099}
+      AAP_TOKEN: ${AAP_TOKEN:-local-mock-token}
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:-portal-local-mock}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-portal-local-mock-secret}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8099/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   # ── PostgreSQL database ──
   db:
@@ -34,18 +67,28 @@ services:
   rhdh:
     environment:
       ENABLE_AUTH_PROVIDER_MODULE_OVERRIDE: 'true'
+      APME_BASE_URL: ${APME_BASE_URL:-http://apme-gateway:8080}
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     depends_on:
       db:
+        condition: service_healthy
+      aap-mock:
         condition: service_healthy
     volumes:
       - ./configs/app-config/app-config.portal-apme.yaml:/opt/app-root/src/configs/app-config/app-config.local.yaml:ro,z
 
   install-dynamic-plugins:
+    depends_on:
+      aap-mock:
+        condition: service_healthy
     volumes:
       - ./configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,z
 
   # ── APME Gateway (REST API + gRPC Reporting) ──
+  # Profile "apme": skipped when APME_EXTERNAL=1.
   apme-gateway:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-gateway:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-gateway
@@ -69,6 +112,7 @@ services:
   # Validators share this container's network namespace via network_mode (sidecar pattern).
   # All validators communicate via 127.0.0.1 within the shared namespace.
   apme-primary:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-primary:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-primary
@@ -88,6 +132,7 @@ services:
 
   # ── APME Validators (share primary's network namespace) ──
   apme-native:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-native:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-native
@@ -97,6 +142,7 @@ services:
         condition: service_started
 
   apme-opa:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-opa:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-opa
@@ -106,10 +152,15 @@ services:
         condition: service_started
 
   apme-ansible:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-ansible:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-ansible
     network_mode: "service:apme-primary"
+    # Session venvs (read-only) — required for M001–M004 / L058 / L059 introspection.
+    # Matches apme containers/podman/pod.yaml ansible volumeMount.
+    volumes:
+      - apme-sessions:/sessions:ro
     environment:
       OPENSSL_CONF: ${OPENSSL_CONF:-}
     depends_on:
@@ -117,6 +168,7 @@ services:
         condition: service_started
 
   apme-gitleaks:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-gitleaks:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-gitleaks
@@ -126,10 +178,13 @@ services:
         condition: service_started
 
   apme-collection-health:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-collection-health:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-collection-health
     network_mode: "service:apme-primary"
+    volumes:
+      - apme-sessions:/sessions:ro
     environment:
       OPENSSL_CONF: ${OPENSSL_CONF:-}
     depends_on:
@@ -137,10 +192,13 @@ services:
         condition: service_started
 
   apme-dep-audit:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-dep-audit:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-dep-audit
     network_mode: "service:apme-primary"
+    volumes:
+      - apme-sessions:/sessions:ro
     environment:
       OPENSSL_CONF: ${OPENSSL_CONF:-}
     depends_on:
@@ -148,6 +206,7 @@ services:
         condition: service_started
 
   apme-galaxy-proxy:
+    profiles: ["apme"]
     image: ghcr.io/ansible/apme-galaxy-proxy:${APME_IMAGE_TAG:-latest}
     platform: ${APME_PLATFORM:-}
     container_name: apme-galaxy-proxy
@@ -156,6 +215,23 @@ services:
       OPENSSL_CONF: ${OPENSSL_CONF:-}
     depends_on:
       apme-primary:
+        condition: service_started
+
+  # ── APME native SPA (side-by-side with Portal) ──
+  # Enabled when compose profile "apme-ui" is active (APME_UI=1 → COMPOSE_PROFILES).
+  # Forced off when APME_EXTERNAL=1 (external stack owns its own UI).
+  apme-ui:
+    profiles: ["apme-ui"]
+    image: ghcr.io/ansible/apme-ui:${APME_IMAGE_TAG:-latest}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-ui
+    ports:
+      - "${APME_UI_PORT:-8081}:8081"
+    environment:
+      # nginx proxies /api/* to the portal stack gateway
+      APME_API_BACKEND: http://apme-gateway:8080
+    depends_on:
+      apme-gateway:
         condition: service_started
 
 volumes:

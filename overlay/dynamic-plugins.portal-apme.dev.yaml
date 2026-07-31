@@ -1,31 +1,29 @@
-# Portal + APME Dynamic Plugins
-# Matches the ansible-portal-chart helm values.yaml plugin list.
-# Plugin tarballs are loaded from local-plugins/portal-apme/*.tgz
+# Portal + APME Dynamic Plugins — DEV (live dist-dynamic via local-plugins mounts)
+#
+# package paths point at bind-mounted dist-dynamic trees under
+# local-plugins/portal-apme-dev/ (see compose.portal-apme.dev.yaml).
+# No .tgz / OCI packaging.
+#
+# ./scripts/start-dev.sh → ./scripts/reload-dev.sh
 
 includes:
   - dynamic-plugins.default.yaml
 
 plugins:
-  # ── Portal plugins (from local tarballs) ──
-
-  # RBAC
   - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
     disabled: false
 
-  # Scaffolder backend (RHAAP)
-  - package: ./local-plugins/portal-apme/ansible-plugin-scaffolder-backend-module-backstage-rhaap-dynamic-2.2.4.tgz
+  - package: ./local-plugins/portal-apme-dev/scaffolder-backend-module-backstage-rhaap
     disabled: false
     pluginConfig:
       dynamicPlugins:
         backend:
           ansible.plugin-scaffolder-backend-module-backstage-rhaap:
 
-  # Catalog backend (RHAAP)
-  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-catalog-backend-module-rhaap-dynamic-2.2.4.tgz
+  - package: ./local-plugins/portal-apme-dev/catalog-backend-module-rhaap
     disabled: false
 
-  # Self-Service frontend
-  - package: ./local-plugins/portal-apme/ansible-plugin-backstage-self-service-dynamic-2.2.4.tgz
+  - package: ./local-plugins/portal-apme-dev/self-service
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -94,37 +92,25 @@ plugins:
                 config:
                   priority: 100
 
-  # Auth backend (RHAAP OAuth)
-  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-2.2.4.tgz
+  - package: ./local-plugins/portal-apme-dev/auth-backend-module-rhaap-provider
     disabled: false
     pluginConfig: {}
 
-  # ── SCM plugins (from GHCR — same as helm chart) ──
-
-  # GitHub auth provider (needed for SCM write access / push branch / create PR)
   - package: >-
       oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-auth-backend-module-github-provider:bs_1.49.4__0.5.1!backstage-plugin-auth-backend-module-github-provider
     disabled: false
 
-  # GitLab auth provider
   - package: >-
       oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-auth-backend-module-gitlab-provider:bs_1.49.4__0.4.1!backstage-plugin-auth-backend-module-gitlab-provider
     disabled: false
 
-  # GitHub scaffolder backend
   - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic
     disabled: false
 
-  # GitLab scaffolder backend
   - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-gitlab-dynamic
     disabled: false
 
-  # ── APME plugins (from local tarballs) ──
-  # Host contract MUST stay in parity with dynamic-plugins.portal-apme.dev.yaml
-  # (apiFactories / entityTabs / mountPoints). See AGENTS.md + make check-plugin-parity.
-
-  # APME frontend UI
-  - package: ./local-plugins/portal-apme/ansible-plugin-backstage-apme-dynamic-0.1.0-dev.1fdc1902.tgz
+  - package: ./local-plugins/portal-apme-dev/backstage-apme
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -144,15 +130,12 @@ plugins:
                   layout:
                     gridColumn: '1 / -1'
 
-  # APME catalog backend module
-  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-catalog-backend-module-apme-dynamic-0.1.0.tgz
+  - package: ./local-plugins/portal-apme-dev/catalog-backend-module-apme
     disabled: false
     pluginConfig:
       dynamicPlugins:
         backend:
           ansible.backstage-plugin-catalog-backend-module-apme: {}
-
-  # ── Disabled RHDH default plugins (match helm chart) ──
 
   - package: ./dynamic-plugins/dist/backstage-plugin-techdocs
     disabled: true

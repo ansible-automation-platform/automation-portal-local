@@ -1,0 +1,15 @@
+---
+description: Keep make start and make dev dynamic-plugins host contracts in sync
+globs:
+  - overlay/dynamic-plugins.portal-apme*.yaml
+  - scripts/check-plugin-config-parity.py
+alwaysApply: false
+---
+
+# Plugin host-config parity
+
+When editing `overlay/dynamic-plugins.portal-apme.dev.yaml` or `overlay/dynamic-plugins.portal-apme.yaml`:
+
+1. Update **both** files for the same host contract (`apiFactories`, routes, mountPoints, entityTabs, backend pluginConfig).
+2. Run `make check-plugin-parity` before finishing.
+3. Read root `AGENTS.md` — RHDH does not auto-register APME factories from the package alone.

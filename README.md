@@ -4,7 +4,9 @@ Run the Automation Portal (RHDH + Portal plugins + APME) locally with Podman Com
 
 This repository wraps [rhdh-local](https://github.com/redhat-developer/rhdh-local) as a git submodule and adds Portal + APME configuration overlays, scripts, and an EAP distribution workflow. It uses RHDH's [dynamic plugin loading](https://docs.redhat.com/en/documentation/red_hat_developer_hub/) — the same mechanism used in production — so local testing matches the deployed experience.
 
-## Quick Start (Developer)
+## Quick Start (Developer — mount loop)
+
+Day-to-day plugin work mounts each plugin’s `dist-dynamic` into RHDH. No `.tgz` packaging, no OCI publish. **No real AAP required** — compose starts **Almost like AAP** (`aap-mock`).
 
 ```bash
 # 1. Clone with submodules
@@ -13,48 +15,85 @@ cd automation-portal-local
 
 # 2. Set environment variables
 cp .env.example .env
-# Edit .env — fill in AAP_HOST_URL, AAP_TOKEN, OAUTH credentials, GITHUB_TOKEN
+# Edit .env — PLUGIN_REPO (and optional GITHUB_TOKEN). Mock AAP defaults are fine.
 
-# 3. Build plugins from your local upstream clone (see "Getting Plugins" below)
-./scripts/build-plugins.sh /path/to/ansible-backstage-plugins
-
-# 4. Start
-./scripts/start.sh
+# 3. Start (exports dist-dynamic, mounts them, starts compose + aap-mock)
+make dev
+# Or override PLUGIN_REPO on the command line:
+make dev PLUGIN_REPO=/path/to/ansible-backstage-plugins
 ```
 
-Portal UI: http://localhost:7007
-APME Gateway: http://localhost:8080
+Portal UI: http://localhost:7007  
+APME Gateway: http://localhost:8080  
+APME UI (native SPA): http://localhost:8081 — toggle with `APME_UI` in `.env` (default on)  
+Almost like AAP: http://localhost:8099  
+
+**Login:** Sign in with Ansible Automation Platform → mock page **Almost like AAP** → `user` / `password`.
+
+```bash
+# After make dev, use the interactive menu (TTY):
+#   [R] reload   [F] frontend   [S] stop   [Q] quit menu
+# Or from another shell:
+make reload                         # re-export changed plugins + restart rhdh
+make reload PLUGINS=backstage-apme  # one plugin
+make reload-fe                      # FE only (browser refresh, no restart)
+make dev-prompt                     # re-enter the R/F/S menu
+```
+
+This is **not** webpack HMR — RHDH reloads mounted files on container restart. For EAP / ship-shape tarball parity, use `make start` (builds tarballs from `PLUGIN_REPO`, then starts). To use a real Controller instead of the mock, set `AAP_MOCK=0` and real `AAP_*` / OAuth values.
+
+### External APME (skip compose stack)
+
+Point Portal at an APME Gateway you already run (e.g. `tox -e up` in the [apme](https://github.com/ansible/apme) repo) instead of starting `apme-*` containers:
+
+```bash
+# In .env
+APME_EXTERNAL=1
+# APME_BASE_URL=http://host.containers.internal:8080   # default when external
+```
+
+Then `make dev` (or `make start`). Compose will not start gateway/primary/validators/`apme-ui`; RHDH reaches the host Gateway via `host.containers.internal`. Use the external stack’s own UI (typically http://localhost:8081). Flip back with `APME_EXTERNAL=0` (or unset) and recreate so profile `apme` is active again.
 
 ## Prerequisites
 
 - **Podman** 4.x+ with `podman compose`
 - **git** (for submodule management)
 - **Node.js** 22.x + Corepack (for building plugins locally)
-- **8 GB+ RAM** (RHDH + 9 APME containers + PostgreSQL)
+- **8 GB+ RAM** (RHDH + APME stack + PostgreSQL; +1 container when `APME_UI=1`)
 
 ## Getting Plugins
 
-Plugin tarballs go in `local-plugins/portal-apme/`. The plugins are loaded as RHDH dynamic plugins — the same mechanism used in production via the Helm chart. This means your local testing reflects exactly how the UI behaves in an OpenShift deployment.
+### Option A: Mount `dist-dynamic` (recommended for developers)
 
-There are two ways to get plugins:
+`make dev` runs `yarn export-dynamic` per portal plugin and bind-mounts each `plugins/<name>/dist-dynamic` into RHDH at `dynamic-plugins-root/dev-<name>`. Config: `overlay/dynamic-plugins.portal-apme.dev.yaml`.
 
-### Option A: Build from local upstream clone (recommended for developers)
-
-Use this when you are actively developing plugins and want to test your changes with dynamic plugin loading.
-
-**Prerequisites:** You need a local clone of [ansible-backstage-plugins](https://github.com/ansible/ansible-backstage-plugins) with your feature branch checked out.
+| Plugin directory | Mounted as |
+|---|---|
+| `auth-backend-module-rhaap-provider` | `local-plugins/portal-apme-dev/auth-backend-module-rhaap-provider` |
+| `catalog-backend-module-rhaap` | `local-plugins/portal-apme-dev/catalog-backend-module-rhaap` |
+| `self-service` | `local-plugins/portal-apme-dev/self-service` |
+| `scaffolder-backend-module-backstage-rhaap` | `local-plugins/portal-apme-dev/scaffolder-backend-module-backstage-rhaap` |
+| `backstage-apme` | `local-plugins/portal-apme-dev/backstage-apme` |
+| `catalog-backend-module-apme` | `local-plugins/portal-apme-dev/catalog-backend-module-apme` |
 
 ```bash
-# Build from your local clone (uses whatever branch is checked out)
-./scripts/build-plugins.sh /path/to/ansible-backstage-plugins
-
-# Or specify a branch explicitly
-./scripts/build-plugins.sh /path/to/ansible-backstage-plugins feat/apme-eap-next-ui-workflow
+# PLUGIN_REPO in .env, or override:
+make dev PLUGIN_REPO=/path/to/ansible-backstage-plugins
+make reload
 ```
 
-The build script delegates to the upstream repo's `build.sh` with `BUILD_TYPE=portal`, then packs each plugin's `dist-dynamic` output into `local-plugins/portal-apme/`. It also updates `overlay/dynamic-plugins.portal-apme.yaml` with the actual tarball filenames.
+Do **not** use upstream `BUILD_TYPE=portal ./build.sh` for this loop — that mode can delete `plugins/backstage-rhaap`. Prefer `make export-plugins`.
 
-**What gets built (Portal mode):**
+### Option B: Tarball pack (EAP / production-shaped)
+
+`make start` **builds** portal plugins from `PLUGIN_REPO` (export-dynamic + npm pack into `local-plugins/portal-apme/`), updates tarball filenames in the overlay YAML, then starts compose. Same install path as OpenShift.
+
+```bash
+make start PLUGIN_REPO=/path/to/ansible-backstage-plugins
+# or just make start  if PLUGIN_REPO is set in .env
+```
+
+Rebuild only (no compose): `make build-plugins`. Skip rebuild when using CI-downloaded `.tgz`: `make start SKIP_BUILD=1`.
 
 | Plugin | Package | Description |
 |---|---|---|
@@ -65,18 +104,7 @@ The build script delegates to the upstream repo's `build.sh` with `BUILD_TYPE=po
 | backstage-apme | `ansible-plugin-backstage-apme-dynamic-*.tgz` | APME frontend (Quality tab, scan workflow) |
 | catalog-backend-module-apme | `ansible-backstage-plugin-catalog-backend-module-apme-dynamic-*.tgz` | APME backend (gateway proxy, catalog sync) |
 
-**Development cycle:**
-```bash
-# 1. Make code changes in your ansible-backstage-plugins clone
-# 2. Rebuild plugins
-./scripts/build-plugins.sh /path/to/ansible-backstage-plugins
-
-# 3. Restart to pick up new plugins
-./scripts/stop.sh
-./scripts/start.sh
-```
-
-### Option B: Download from GitHub Actions workflow (for PMs, QE, EAP)
+### Option C: Download from GitHub Actions workflow (for PMs, QE, EAP)
 
 Use this when you want pre-built plugins from a CI run — no local Node.js or build tools required.
 
@@ -92,7 +120,7 @@ Use this when you want pre-built plugins from a CI run — no local Node.js or b
    # The artifact contains a bundle tar.gz
    tar -xzf early-access-plugins-*.tar.gz -C local-plugins/portal-apme/
    ```
-5. Update `overlay/dynamic-plugins.portal-apme.yaml` tarball filenames to match the downloaded versions. The `build-plugins.sh` script does this automatically for local builds, but for CI artifacts you need to update the filenames manually or re-run: `./scripts/build-plugins.sh` after placing tarballs.
+5. Update `overlay/dynamic-plugins.portal-apme.yaml` tarball filenames to match the downloaded versions (or place them and run `make start SKIP_BUILD=1` after editing the YAML). Local builds update filenames automatically via `make build-plugins` / `make start`.
 
 **From automation-portal-local EAP workflow:**
 
@@ -109,25 +137,42 @@ Use this when you want pre-built plugins from a CI run — no local Node.js or b
 | `OAUTH_CLIENT_ID` | Yes | — | RHAAP OAuth client ID |
 | `OAUTH_CLIENT_SECRET` | Yes | — | RHAAP OAuth client secret |
 | `GITHUB_TOKEN` | Yes | — | GitHub PAT for SCM integration |
+| `PLUGIN_REPO` | Yes for `start-dev` | `~/github/ansible-backstage-plugins` | Absolute path to ansible-backstage-plugins |
 | `GITHUB_OAUTH_CLIENT_ID` | No | — | GitHub OAuth app client ID |
 | `GITHUB_OAUTH_CLIENT_SECRET` | No | — | GitHub OAuth app client secret |
 | `GITLAB_TOKEN` | No | — | GitLab PAT (if using GitLab SCM) |
 | `APME_IMAGE_TAG` | No | `latest` | APME container image tag from ghcr.io |
+| `APME_UI` | No | `1` (on) | Start native APME SPA (`apme-ui`) for side-by-side testing; `0`/`false`/`off` to skip; forced off when `APME_EXTERNAL=1` |
+| `APME_UI_PORT` | No | `8081` | Host port for the native APME UI |
+| `APME_EXTERNAL` | No | `0` (bundled) | `1` skips compose `apme-*` and uses `APME_BASE_URL` |
+| `APME_BASE_URL` | No | bundled: `http://apme-gateway:8080`; external: `http://host.containers.internal:8080` | Gateway URL for RHDH / APME plugins |
 | `RHDH_IMAGE` | No | `quay.io/rhdh-community/rhdh:1.10` | RHDH base image |
 | `CUSTOMER_SUPPORT_URL` | No | Red Hat support | URL for the Support button in the global header |
 | `POSTGRES_PASSWORD` | No | `postgres` | PostgreSQL password |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | No | `0` | Set to `0` for self-signed certs |
 
-## Scripts
+## Make Targets
 
-| Script | Description |
+Run `make help` to see all targets. Key ones:
+
+| Target | Description |
 |---|---|
-| `./scripts/build-plugins.sh <path> [branch]` | Build dynamic plugin tarballs from a local upstream clone |
-| `./scripts/start.sh` | Copy overlays into rhdh-local, load images if present, start all services |
-| `./scripts/stop.sh` | Stop all services |
-| `./scripts/cleanup.sh` | Stop services, remove volumes, clean copied overlay files |
-| `./scripts/cleanup.sh --remove-images` | Full cleanup including container images |
-| `./scripts/load-images.sh` | Load APME images from `images/*.tar.gz` archives |
+| `make dev` | **Dev loop:** export-dynamic + mount `dist-dynamic` + compose up |
+| `make start` | Tarball mode: **build** `.tgz` from `PLUGIN_REPO`, then start (`SKIP_BUILD=1` to reuse) |
+| `make check-plugin-parity` | Fail if DEV vs tarball `pluginConfig` host contracts drift |
+| `make stop` | Stop all services (auto-detects dev vs tarball mode) |
+| `make reload` | Re-export **changed** plugins + reinstall + restart rhdh (`FORCE_EXPORT=1` = all) |
+| `make reload-fe` | FE-only: incremental export of dirty FE plugins into `dynamic-plugins-root` |
+| `make export-plugins` | Incremental `yarn export-dynamic` for portal plugins |
+| `make build-plugins` | Build dynamic plugin **tarballs** (EAP / ship-shape) |
+| `make clean` | Stop services, remove volumes, clean copied overlay files |
+| `make clean-images` | Full cleanup including container images |
+| `make logs` | Follow compose logs |
+| `make status` | Show running containers |
+
+Override `PLUGIN_REPO`, `PLUGINS`, or `FE_PLUGINS` on the command line, e.g. `make reload PLUGINS=backstage-apme`.
+
+**Host contract:** RHDH registers APME/self-service `apiFactories` from overlay YAML, not from the package alone. Changing factories/routes/mountPoints requires updating **both** `overlay/dynamic-plugins.portal-apme.dev.yaml` and `overlay/dynamic-plugins.portal-apme.yaml`. See [AGENTS.md](AGENTS.md). CI and `make check-plugin-parity` enforce this.
 
 ## EAP Distribution
 
@@ -165,20 +210,20 @@ cp .env.example .env
 # Edit .env — fill in AAP_HOST_URL, AAP_TOKEN, OAUTH credentials, GITHUB_TOKEN
 
 # 3. Start the portal (auto-loads APME images from images/ if present)
-./scripts/start.sh
+make start
 ```
 
 ### Customer cleanup
 
 ```bash
 # Stop services
-./scripts/stop.sh
+make stop
 
 # Full cleanup (removes volumes and data)
-./scripts/cleanup.sh
+make clean
 
 # Full cleanup including container images
-./scripts/cleanup.sh --remove-images
+make clean-images
 ```
 
 ## Platform Notes
@@ -186,8 +231,8 @@ cp .env.example .env
 ### macOS (Apple Silicon)
 
 APME container images are published as `linux/amd64` only. On ARM hosts:
-- `start.sh` auto-detects ARM and sets `APME_PLATFORM=linux/amd64` for Rosetta/QEMU emulation
-- `start.sh` auto-sets `OPENSSL_CONF=/dev/null` to work around UBI10 FIPS provider failures under emulation
+- `make dev` / `make start` auto-detect ARM and set `APME_PLATFORM=linux/amd64` for Rosetta/QEMU emulation
+- Auto-sets `OPENSSL_CONF=/dev/null` to work around UBI10 FIPS provider failures under emulation
 - APME scans will be slower (~2-5x) due to emulation overhead
 - **Known limitation:** APME's "Push branch" and "Create PR" actions fail with `SSL: CERTIFICATE_VERIFY_FAILED` because OpenSSL 3.x crypto primitives produce incorrect results under ARM emulation. Scan, review, and generate fixes work normally. Push branch / Create PR require a native x86_64 host.
 
@@ -234,35 +279,47 @@ Native performance. No emulation needed. This is the target platform for EAP cus
 
 ## How Dynamic Plugin Loading Works
 
-This setup uses the same plugin loading mechanism as production:
+### Tarball / EAP (`make start`)
 
-1. Plugin tarballs (`.tgz`) are placed in `local-plugins/portal-apme/`
-2. The `install-dynamic-plugins` init container runs `install-dynamic-plugins.sh` which extracts and installs them into a shared volume (`dynamic-plugins-root`)
-3. The `rhdh` container starts with the installed plugins available at runtime
-4. Plugin configuration (routes, mount points, field extensions) is defined in `dynamic-plugins.portal-apme.yaml`
+1. Export + pack plugins from `PLUGIN_REPO` into `local-plugins/portal-apme/*.tgz` (unless `SKIP_BUILD=1`)
+2. `install-dynamic-plugins` extracts them into the shared `dynamic-plugins-root` volume
+3. `rhdh` starts with those installed plugins
+4. Config: `dynamic-plugins.portal-apme.yaml`
 
-This is identical to how the Helm chart ([ansible-portal-chart](https://github.com/ansible-automation-platform/ansible-portal-chart)) loads plugins in OpenShift — via tarball or OCI references in the `global.dynamic.plugins` values. Testing locally with this setup validates that your plugin changes will work correctly in production.
+Matches how the Helm chart ([ansible-portal-chart](https://github.com/ansible-automation-platform/ansible-portal-chart)) loads plugins in OpenShift.
+
+### Mount / DEV (`make dev`)
+
+1. Host `plugins/*/dist-dynamic` is bind-mounted under `local-plugins/portal-apme-dev/` (installer source path — **not** under `dynamic-plugins-root`, which is wiped on first install / RHIDP-3939)
+2. Override YAML uses `package: ./local-plugins/portal-apme-dev/<name>`
+3. Host `./dynamic-plugins-root` is mounted into RHDH (same idea as rhdh-local `compose-dynamic-plugins-root.yaml`)
+4. Iterate: `make reload` (reinstall + restart) or `make reload-fe` (`export-dynamic --dev` + browser refresh)
+
+If plugins vanish after install, check `dynamic-plugins-root/dynamic-plugins.extensions.yaml` — it must use `includes: []` (including `dynamic-plugins.default.yaml` there can GC portal plugins).
 
 ## Repository Structure
 
 ```
 automation-portal-local/
+├── Makefile                        # Primary interface (make help)
 ├── .github/workflows/
 │   ├── eap-build.yaml              # EAP distributable build workflow
 │   └── update-submodule.yaml       # Weekly rhdh-local submodule update
 ├── rhdh-local/                     # git submodule (redhat-developer/rhdh-local)
 ├── overlay/
 │   ├── compose.portal-apme.yaml           # Compose overlay (ghcr.io APME images)
+│   ├── compose.portal-apme.dev.yaml       # Bind-mount dist-dynamic (DEV)
 │   ├── app-config.portal-apme.yaml        # Portal app-config
-│   └── dynamic-plugins.portal-apme.yaml   # Plugin manifest
+│   ├── dynamic-plugins.portal-apme.yaml   # Plugin manifest (tarballs)
+│   └── dynamic-plugins.portal-apme.dev.yaml
+├── aap-mock/                       # Local AAP Gateway/Controller/OAuth mock
 ├── local-plugins/portal-apme/      # Plugin tarballs (gitignored)
 ├── scripts/
-│   ├── build-plugins.sh            # Build plugins from local upstream clone
-│   ├── start.sh                    # Assemble + compose up
-│   ├── stop.sh                     # Compose down
-│   ├── cleanup.sh                  # Full cleanup
-│   └── load-images.sh             # Load APME OCI archives
-├── .env.example                    # Environment variable template
+│   ├── build-plugins.sh            # Pack tarballs from upstream clone
+│   ├── export-plugins-dev.sh       # yarn export-dynamic for portal plugins
+│   ├── load-images.sh              # Load OCI archives for offline EAP
+│   └── lib.sh                      # Minimal shared helpers
+├── .env.example
 └── README.md
 ```
 
@@ -271,9 +328,9 @@ automation-portal-local/
 The compose overlay pattern is extensible. To add another integration (e.g. Lightspeed):
 
 1. Create a new compose overlay: `overlay/compose.portal-lightspeed.yaml`
-2. Stack compose files in start.sh:
-   ```bash
-   podman compose -f compose.yaml -f compose.portal-apme.yaml -f compose.portal-lightspeed.yaml up -d
+2. Add the `-f` flag to `COMPOSE_F` in the Makefile:
+   ```makefile
+   COMPOSE_F := -f compose.yaml -f compose.portal-apme.yaml -f compose.portal-lightspeed.yaml
    ```
 3. Update the EAP workflow to pull/save additional container images
 

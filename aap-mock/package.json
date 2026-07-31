@@ -1,0 +1,18 @@
+{
+  "name": "aap-mock",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stateful AAP Gateway/Controller/OAuth mock for automation-portal-local",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@fastify/formbody": "^8.0.2",
+    "fastify": "^5.2.1"
+  }
+}

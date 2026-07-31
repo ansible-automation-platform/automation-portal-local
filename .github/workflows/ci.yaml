@@ -45,15 +45,27 @@ jobs:
 
       - name: Validate dynamic-plugins YAML syntax
         run: |
+          pip install -q pyyaml
           python3 -c "
           import yaml, sys
-          try:
-              yaml.safe_load(open('overlay/dynamic-plugins.portal-apme.yaml'))
-              print('  ✓ overlay/dynamic-plugins.portal-apme.yaml')
-          except yaml.YAMLError as e:
-              print(f'  ✗ {e}')
-              sys.exit(1)
+          errors = 0
+          for path in (
+              'overlay/dynamic-plugins.portal-apme.yaml',
+              'overlay/dynamic-plugins.portal-apme.dev.yaml',
+          ):
+              try:
+                  yaml.safe_load(open(path))
+                  print(f'  ✓ {path}')
+              except yaml.YAMLError as e:
+                  print(f'  ✗ {path}: {e}')
+                  errors += 1
+          sys.exit(errors)
           "
+
+      - name: DEV vs tarball plugin host-config parity
+        run: |
+          pip install -q pyyaml
+          python3 scripts/check-plugin-config-parity.py
 
       - name: Validate app-config YAML syntax
         run: |
