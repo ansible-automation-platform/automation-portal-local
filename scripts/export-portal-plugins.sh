@@ -92,7 +92,25 @@ print(name)
 PY
 }
 
-# Cheap sync so skipped exports still refresh the --dev mount root.
+# Sync dist-dynamic into one or more destinations under DYNAMIC_PLUGINS_ROOT.
+_sync_one_dest() {
+  local src_dir="$1"
+  local dest="$2"
+  mkdir -p "$dest"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete --exclude node_modules "$src_dir/" "$dest/"
+  else
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    cp -a "$src_dir/." "$dest/"
+  fi
+  chmod -R a+rX "$dest" 2>/dev/null || true
+  echo "  ↳ synced → $dest"
+}
+
+# Cheap sync so skipped/--dev exports refresh what RHDH actually loads.
+# install-dynamic-plugins uses versioned dirs (*-dynamic-X.Y.Z); --dev uses a
+# short name — update both when present so F isn't a no-op against a stale install.
 sync_dev_root() {
   local name="$1"
   local src="$PLUGIN_REPO/plugins/$name"
@@ -100,22 +118,36 @@ sync_dev_root() {
   [ -n "$DYNAMIC_PLUGINS_ROOT" ] || return 0
   [ -f "$stamp" ] || return 0
 
-  local dest_name dest
+  local dest_name pkg_base
   dest_name="$(dev_root_dirname "$stamp")"
-  dest="$DYNAMIC_PLUGINS_ROOT/$dest_name"
-  mkdir -p "$dest"
-  # Prefer rsync; fall back to cp -a.
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete \
-      --exclude node_modules \
-      "$src/dist-dynamic/" "$dest/"
-  else
-    rm -rf "$dest"
-    mkdir -p "$dest"
-    cp -a "$src/dist-dynamic/." "$dest/"
-  fi
-  chmod -R a+rX "$dest" 2>/dev/null || true
-  echo "  ↳ synced → $dest"
+  # @ansible/plugin-backstage-self-service-dynamic → ansible-plugin-backstage-self-service-dynamic
+  pkg_base="$(python3 - "$stamp" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1]))["name"].lstrip("@").replace("/", "-"))
+PY
+)"
+
+  local dests=()
+  dests+=("$DYNAMIC_PLUGINS_ROOT/$dest_name")
+  # Versioned install dirs, e.g. ansible-plugin-backstage-self-service-dynamic-2.2.4
+  local d
+  for d in "$DYNAMIC_PLUGINS_ROOT"/"$pkg_base"-*; do
+    [ -d "$d" ] && dests+=("$d")
+  done
+  # Also match short-name variants that include the plugin folder name
+  for d in "$DYNAMIC_PLUGINS_ROOT"/*"$name"*; do
+    [ -d "$d" ] || continue
+    dests+=("$d")
+  done
+
+  # Dedupe
+  local -A seen=()
+  local dest
+  for dest in "${dests[@]}"; do
+    [ -n "${seen[$dest]:-}" ] && continue
+    seen[$dest]=1
+    _sync_one_dest "$src/dist-dynamic" "$dest"
+  done
 }
 
 needs_export() {

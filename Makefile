@@ -98,7 +98,7 @@ dev: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _overla
 dev-prompt: ## Re-enter the interactive DEV menu (R/F/S) without restarting compose
 	@DEV_PROMPT=1 "$(ROOT_DIR)/scripts/dev-prompt.sh"
 
-start: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
+start: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _prep-install-root _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
 	@echo "Starting services…"
 	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F) up -d
 	@$(MAKE) --no-print-directory _banner
@@ -197,7 +197,7 @@ status: ## Show running containers
 # =====================================================================
 .PHONY: _check-env _prereqs _stop-if-running _submodule _overlays _overlays-dev \
         _overlays-tarball _env-files _export-plugins _seed-extensions \
-        _load-images _tarballs _sync-template _prep-dev-root \
+        _load-images _tarballs _sync-template _prep-dev-root _prep-install-root \
         _build-tarballs _maybe-build-tarballs \
         _banner _banner-dev _banner-apme
 
@@ -334,11 +334,30 @@ _tarballs:
 	  exit 1; \
 	fi
 
-_prep-dev-root:
+# Wipe previously installed portal plugins so install-dynamic-plugins cannot
+# treat same name@version as already_installed.
+#
+# Important: make start uses the named compose volume
+#   rhdh-local_dynamic-plugins-root
+# make dev bind-mounts the host dir
+#   rhdh-local/dynamic-plugins-root
+# Clearing only the host dir does nothing for make start — the installer keeps
+# skipping rebuilt .tgz files and you lose Overview Quality / README fixes.
+_prep-install-root:
 	@mkdir -p "$(RHDH_DIR)/dynamic-plugins-root"
+	@echo "Clearing host dynamic-plugins-root ansible/backstage installs…"
 	@find "$(RHDH_DIR)/dynamic-plugins-root" -maxdepth 1 -mindepth 1 \
 	  \( -name 'ansible-*' -o -name 'backstage-*' \) -exec rm -rf {} + 2>/dev/null || true
 	@touch "$(RHDH_DIR)/dynamic-plugins-root/app-config.dynamic-plugins.yaml"
+	@VOL=$$(podman volume ls -q 2>/dev/null | grep -E '(^|_)dynamic-plugins-root$$' | head -1 || true); \
+	if [ -n "$$VOL" ]; then \
+	  echo "Clearing named volume $$VOL (used by make start / tarball mode)…"; \
+	  podman run --rm -v "$$VOL:/dynamic-plugins-root:Z" alpine \
+	    sh -c 'find /dynamic-plugins-root -mindepth 1 -maxdepth 1 \( -name "ansible-*" -o -name "backstage-*" \) -exec rm -rf {} +' \
+	    || true; \
+	fi
+
+_prep-dev-root: _prep-install-root
 
 _seed-extensions:
 	@mkdir -p "$(RHDH_DIR)/dynamic-plugins-root"
