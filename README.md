@@ -66,6 +66,118 @@ make start   # or make dev
 
 Provider keys are injected via `.env-abbenay` at container start (restart Abbenay after edits). With `APME_EXTERNAL=1`, use the host APME checkout `containers/abbenay/.env` instead — portal `.env-abbenay` is unused.
 
+### Portal-only mode (no APME, no mock)
+
+For EAP testing with a real AAP controller — no APME stack, no mock server:
+
+```bash
+# In .env
+AAP_MOCK=0
+APME_EXTERNAL=1
+AAP_HOST_URL=https://your-aap-controller.example.com
+AAP_PUBLIC_URL=https://your-aap-controller.example.com
+AAP_TOKEN=<your-aap-token>
+OAUTH_CLIENT_ID=<your-oauth-client-id>
+OAUTH_CLIENT_SECRET=<your-oauth-client-secret>
+```
+
+Only `db` and `rhdh` containers start. APME and mock services are skipped via compose profiles.
+
+To re-enable APME or the mock server, set the corresponding variables back to their defaults:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `AAP_MOCK=1` | on | Starts the `aap-mock` container (local OAuth + API mock) |
+| `APME_EXTERNAL=0` | bundled | Starts the full APME stack (gateway, validators, UI) |
+
+Multi-org support is pre-configured in `overlay/app-config.portal-apme.yaml`. Edit the `orgs` list under `catalog.providers.rhaap.<environment>` to match your AAP organizations:
+
+```yaml
+catalog:
+  providers:
+    rhaap:
+      development:
+        multiOrgEnabled: true
+        orgs:
+          - Default
+          - Engineering
+```
+
+### Updating plugins (EAP drops)
+
+To provide customers with an updated set of plugins without rebuilding the full tarball:
+
+1. Copy the new `.tgz` files to the customer host:
+   ```bash
+   scp new-plugins/*.tgz user@customer-host:automation-portal-local/local-plugins/portal/
+   ```
+
+2. On the customer host, reinstall and restart:
+   ```bash
+   cd automation-portal-local
+   make stop
+   make start SKIP_BUILD=1
+   ```
+
+### Packaging a distributable tarball
+
+To create a self-contained tarball for customer delivery:
+
+**Option 1: EAP workflow (recommended)**
+
+1. Go to **Actions** > **EAP / Build Distributable** in this repo
+2. Set `upstream_branch` to the branch with your changes (e.g. `main`, `feat/sync-ux-signals`)
+3. Download the `automation-portal-local-*.tar.gz` artifact
+
+**Option 2: Manual packaging**
+
+```bash
+# 1. Build plugins from a specific branch
+cd /path/to/ansible-backstage-plugins
+git checkout main   # or feat/sync-ux-signals
+
+# 2. Build plugin tarballs
+cd /path/to/automation-portal-local
+make build-plugins PLUGIN_REPO=/path/to/ansible-backstage-plugins
+
+# 3. Verify (optional — starts portal, confirm it works, then stop)
+make start SKIP_BUILD=1
+make stop
+
+# 4. Package (exclude dev files, git, node_modules)
+tar czf automation-portal-local-multiorg.tar.gz \
+  --exclude=’.git’ \
+  --exclude=’node_modules’ \
+  --exclude=’rhdh-local/.git’ \
+  --exclude=’*.log’ \
+  -C /path/to \
+  automation-portal-local
+```
+
+### Customer quick start (3 commands)
+
+```bash
+# 1. Untar
+tar xzf automation-portal-local-multiorg.tar.gz && cd automation-portal-local
+
+# 2. Configure
+cp .env.example .env
+# Edit .env — set AAP_HOST_URL, AAP_PUBLIC_URL, AAP_TOKEN, OAUTH_CLIENT_ID,
+#              OAUTH_CLIENT_SECRET. Set AAP_MOCK=0 and APME_EXTERNAL=1.
+
+# 3. Start
+make start SKIP_BUILD=1
+```
+
+Portal UI: http://localhost:7007
+
+### Customer cleanup
+
+```bash
+make stop          # Stop services
+make clean         # Full cleanup (removes volumes and data)
+```
+
 ## Prerequisites
 
 - **Podman** 4.x+ with `podman compose`
@@ -81,12 +193,12 @@ Provider keys are injected via `.env-abbenay` at container start (restart Abbena
 
 | Plugin directory | Mounted as |
 |---|---|
-| `auth-backend-module-rhaap-provider` | `local-plugins/portal-apme-dev/auth-backend-module-rhaap-provider` |
-| `catalog-backend-module-rhaap` | `local-plugins/portal-apme-dev/catalog-backend-module-rhaap` |
-| `self-service` | `local-plugins/portal-apme-dev/self-service` |
-| `scaffolder-backend-module-backstage-rhaap` | `local-plugins/portal-apme-dev/scaffolder-backend-module-backstage-rhaap` |
-| `backstage-apme` | `local-plugins/portal-apme-dev/backstage-apme` |
-| `catalog-backend-module-apme` | `local-plugins/portal-apme-dev/catalog-backend-module-apme` |
+| `auth-backend-module-rhaap-provider` | `local-plugins/portal-dev/auth-backend-module-rhaap-provider` |
+| `catalog-backend-module-rhaap` | `local-plugins/portal-dev/catalog-backend-module-rhaap` |
+| `self-service` | `local-plugins/portal-dev/self-service` |
+| `scaffolder-backend-module-backstage-rhaap` | `local-plugins/portal-dev/scaffolder-backend-module-backstage-rhaap` |
+| `backstage-apme` | `local-plugins/portal-dev/backstage-apme` |
+| `catalog-backend-module-apme` | `local-plugins/portal-dev/catalog-backend-module-apme` |
 
 ```bash
 # PLUGIN_REPO in .env, or override:
@@ -98,7 +210,7 @@ Do **not** use upstream `BUILD_TYPE=portal ./build.sh` for this loop — that mo
 
 ### Option B: Tarball pack (EAP / production-shaped)
 
-`make start` **builds** portal plugins from `PLUGIN_REPO` (export-dynamic + npm pack into `local-plugins/portal-apme/`), updates tarball filenames in the overlay YAML, then starts compose. Same install path as OpenShift.
+`make start` **builds** portal plugins from `PLUGIN_REPO` (export-dynamic + npm pack into `local-plugins/portal/`), updates tarball filenames in the overlay YAML, then starts compose. Same install path as OpenShift.
 
 ```bash
 make start PLUGIN_REPO=/path/to/ansible-backstage-plugins
@@ -127,10 +239,10 @@ Use this when you want pre-built plugins from a CI run — no local Node.js or b
    - `release_type`: `early-access`
    - `upstream_branch`: the branch to build from (e.g. `feat/apme-eap-next-ui-workflow`)
 3. When complete, download the **plugin tarballs** artifact
-4. Extract into `local-plugins/portal-apme/`:
+4. Extract into `local-plugins/portal/`:
    ```bash
    # The artifact contains a bundle tar.gz
-   tar -xzf early-access-plugins-*.tar.gz -C local-plugins/portal-apme/
+   tar -xzf early-access-plugins-*.tar.gz -C local-plugins/portal/
    ```
 5. Update `overlay/dynamic-plugins.portal-apme.yaml` tarball filenames to match the downloaded versions (or place them and run `make start SKIP_BUILD=1` after editing the YAML). Local builds update filenames automatically via `make build-plugins` / `make start`.
 
@@ -145,9 +257,11 @@ Use this when you want pre-built plugins from a CI run — no local Node.js or b
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `AAP_HOST_URL` | Yes | — | AAP controller URL (e.g. `https://aap.example.com`) |
+| `AAP_PUBLIC_URL` | Yes | same as `AAP_HOST_URL` | AAP URL reachable from the browser (for OAuth redirect) |
 | `AAP_TOKEN` | Yes | — | AAP API token |
 | `OAUTH_CLIENT_ID` | Yes | — | RHAAP OAuth client ID |
 | `OAUTH_CLIENT_SECRET` | Yes | — | RHAAP OAuth client secret |
+| `AAP_MOCK` | No | `1` (on) | `0` disables the mock AAP server (use real AAP credentials) |
 | `GITHUB_TOKEN` | Yes | — | GitHub PAT for SCM integration |
 | `PLUGIN_REPO` | Yes for `start-dev` | `~/github/ansible-backstage-plugins` | Absolute path to ansible-backstage-plugins |
 | `GITHUB_OAUTH_CLIENT_ID` | No | — | GitHub OAuth app client ID |
@@ -287,7 +401,7 @@ Native performance. No emulation needed. This is the target platform for EAP cus
 
 ### Tarball / EAP (`make start`)
 
-1. Export + pack plugins from `PLUGIN_REPO` into `local-plugins/portal-apme/*.tgz` (unless `SKIP_BUILD=1`)
+1. Export + pack plugins from `PLUGIN_REPO` into `local-plugins/portal/*.tgz` (unless `SKIP_BUILD=1`)
 2. `install-dynamic-plugins` extracts them into the shared `dynamic-plugins-root` volume
 3. `rhdh` starts with those installed plugins
 4. Config: `dynamic-plugins.portal-apme.yaml`
@@ -296,8 +410,8 @@ Matches how the Helm chart ([ansible-portal-chart](https://github.com/ansible-au
 
 ### Mount / DEV (`make dev`)
 
-1. Host `plugins/*/dist-dynamic` is bind-mounted under `local-plugins/portal-apme-dev/` (installer source path — **not** under `dynamic-plugins-root`, which is wiped on first install / RHIDP-3939)
-2. Override YAML uses `package: ./local-plugins/portal-apme-dev/<name>`
+1. Host `plugins/*/dist-dynamic` is bind-mounted under `local-plugins/portal-dev/` (installer source path — **not** under `dynamic-plugins-root`, which is wiped on first install / RHIDP-3939)
+2. Override YAML uses `package: ./local-plugins/portal-dev/<name>`
 3. Host `./dynamic-plugins-root` is mounted into RHDH (same idea as rhdh-local `compose-dynamic-plugins-root.yaml`)
 4. Iterate: `make reload` (reinstall + restart) or `make reload-fe` (`export-dynamic --dev` + browser refresh)
 
@@ -321,7 +435,7 @@ automation-portal-local/
 │   └── dynamic-plugins.portal-apme.dev.yaml
 ├── .env-abbenay.example            # Abbenay provider keys template
 ├── aap-mock/                       # Local AAP Gateway/Controller/OAuth mock
-├── local-plugins/portal-apme/      # Plugin tarballs (gitignored)
+├── local-plugins/portal/      # Plugin tarballs (gitignored)
 ├── scripts/
 │   ├── build-plugins.sh            # Pack tarballs from upstream clone
 │   ├── export-plugins-dev.sh       # yarn export-dynamic for portal plugins
