@@ -26,6 +26,8 @@ APME_EXTERNAL=0      # default
 
 **Containers:** `db`, `rhdh`, `install-dynamic-plugins`, `aap-mock`, `apme-gateway`, `apme-primary` + validators, `apme-ui`
 
+APME plugins are disabled by default in the overlay YAMLs. To enable them, set `disabled: false` on the APME entries in both `overlay/dynamic-plugins.portal.yaml` and `overlay/dynamic-plugins.portal.dev.yaml`. Running `make build-plugins` with APME in the PLUGINS list handles this automatically.
+
 Use this for local development when you don't have access to a real AAP controller.
 
 ## External APME

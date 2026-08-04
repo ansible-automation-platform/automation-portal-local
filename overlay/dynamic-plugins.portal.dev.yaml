@@ -110,6 +110,7 @@ plugins:
   - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-gitlab-dynamic
     disabled: false
 
+  # APME frontend — set disabled: false when APME plugins are in PLUGIN_REPO
   - package: ./local-plugins/portal-dev/backstage-apme
     disabled: true
     pluginConfig:
@@ -130,6 +131,7 @@ plugins:
                   layout:
                     gridColumn: '1 / -1'
 
+  # APME backend — set disabled: false when APME plugins are in PLUGIN_REPO
   - package: ./local-plugins/portal-dev/catalog-backend-module-apme
     disabled: true
     pluginConfig:
