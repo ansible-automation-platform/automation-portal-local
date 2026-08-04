@@ -14,7 +14,9 @@
 services:
 
   # ── Almost like AAP (local mock; no real Controller required) ──
+  # Profile "mock": skipped when AAP_MOCK=0 (real AAP controller used).
   aap-mock:
+    profiles: ["mock"]
     container_name: aap-mock
     build:
       context: ../aap-mock
@@ -68,20 +70,16 @@ services:
     environment:
       ENABLE_AUTH_PROVIDER_MODULE_OVERRIDE: 'true'
       APME_BASE_URL: ${APME_BASE_URL:-http://apme-gateway:8080}
+      AAP_PUBLIC_URL: ${AAP_PUBLIC_URL:-http://localhost:8099}
     extra_hosts:
       - "host.containers.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
-      aap-mock:
-        condition: service_healthy
     volumes:
       - ./configs/app-config/app-config.portal-apme.yaml:/opt/app-root/src/configs/app-config/app-config.local.yaml:ro,z
 
   install-dynamic-plugins:
-    depends_on:
-      aap-mock:
-        condition: service_healthy
     volumes:
       - ./configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,z
 

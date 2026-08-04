@@ -1,6 +1,6 @@
 # Portal + APME Dynamic Plugins
 # Matches the ansible-portal-chart helm values.yaml plugin list.
-# Plugin tarballs are loaded from local-plugins/portal-apme/*.tgz
+# Plugin tarballs are loaded from local-plugins/portal/*.tgz
 
 includes:
   - dynamic-plugins.default.yaml
@@ -13,7 +13,7 @@ plugins:
     disabled: false
 
   # Scaffolder backend (RHAAP)
-  - package: ./local-plugins/portal-apme/ansible-plugin-scaffolder-backend-module-backstage-rhaap-dynamic-2.2.4.tgz
+  - package: ./local-plugins/portal/ansible-plugin-scaffolder-backend-module-backstage-rhaap-dynamic-2.2.5.tgz
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -21,11 +21,11 @@ plugins:
           ansible.plugin-scaffolder-backend-module-backstage-rhaap:
 
   # Catalog backend (RHAAP)
-  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-catalog-backend-module-rhaap-dynamic-2.2.4.tgz
+  - package: ./local-plugins/portal/ansible-backstage-plugin-catalog-backend-module-rhaap-dynamic-2.2.5.tgz
     disabled: false
 
   # Self-Service frontend
-  - package: ./local-plugins/portal-apme/ansible-plugin-backstage-self-service-dynamic-2.2.4.tgz
+  - package: ./local-plugins/portal/ansible-plugin-backstage-self-service-dynamic-2.2.5.tgz
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -95,9 +95,19 @@ plugins:
                   priority: 100
 
   # Auth backend (RHAAP OAuth)
-  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-2.2.4.tgz
+  - package: ./local-plugins/portal/ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-2.2.5.tgz
     disabled: false
     pluginConfig: {}
+
+  # ── Backstage Signals (WebSocket push for sync state) ──
+  - package: ./dynamic-plugins/dist/backstage-plugin-signals-backend-dynamic
+    disabled: false
+  - package: ./dynamic-plugins/dist/backstage-plugin-signals
+    disabled: false
+    pluginConfig:
+      dynamicPlugins:
+        frontend:
+          backstage.plugin-signals: {}
 
   # ── SCM plugins (from GHCR — same as helm chart) ──
 
@@ -123,9 +133,9 @@ plugins:
   # Host contract MUST stay in parity with dynamic-plugins.portal-apme.dev.yaml
   # (apiFactories / entityTabs / mountPoints). See AGENTS.md + make check-plugin-parity.
 
-  # APME frontend UI
-  - package: ./local-plugins/portal-apme/ansible-plugin-backstage-apme-dynamic-0.1.0-dev.1fdc1902.tgz
-    disabled: false
+  # APME frontend UI (disabled — APME not included for portal-only delivery)
+  - package: ./local-plugins/portal/ansible-plugin-backstage-apme-dynamic-0.1.0-dev.1fdc1902.tgz
+    disabled: true
     pluginConfig:
       dynamicPlugins:
         frontend:
@@ -144,9 +154,9 @@ plugins:
                   layout:
                     gridColumn: '1 / -1'
 
-  # APME catalog backend module
-  - package: ./local-plugins/portal-apme/ansible-backstage-plugin-catalog-backend-module-apme-dynamic-0.1.0.tgz
-    disabled: false
+  # APME catalog backend module (disabled — APME not included for portal-only delivery)
+  - package: ./local-plugins/portal/ansible-backstage-plugin-catalog-backend-module-apme-dynamic-0.1.0.tgz
+    disabled: true
     pluginConfig:
       dynamicPlugins:
         backend:

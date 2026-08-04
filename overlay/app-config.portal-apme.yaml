@@ -113,7 +113,10 @@ catalog:
   providers:
     rhaap:
       development:
-        orgs: Default
+        multiOrgEnabled: true
+        orgs:
+          - Default
+          - Engineering
         sync:
           ansibleGitContents:
             enabled: true

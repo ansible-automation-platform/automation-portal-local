@@ -16,47 +16,68 @@ OVERLAY   := $(ROOT_DIR)/overlay
 
 # ── Defaults ─────────────────────────────────────────────────────────
 PLUGIN_REPO   ?= $(HOME)/github/ansible-backstage-plugins
+AAP_MOCK      ?= 1
 APME_EXTERNAL ?= 0
 APME_UI       ?= 1
 APME_IMAGE_TAG ?= latest
 APME_BASE_URL ?=
-# Set SKIP_BUILD=1 to use existing local-plugins/portal-apme/*.tgz (CI artifacts).
+# Set SKIP_BUILD=1 to use existing local-plugins/portal/*.tgz (CI artifacts).
 SKIP_BUILD    ?= 0
 # Set FORCE_EXPORT=1 to rebuild every plugin (ignore incremental dist-dynamic stamps).
 FORCE_EXPORT  ?= 0
 # Set DEV_PROMPT=0 to skip the interactive R/F/S menu after make dev.
 DEV_PROMPT    ?= 1
 
-# ── APME compose-profile resolution ─────────────────────────────────
-# Replaces the profile-manipulation bash functions from lib.sh.
+# ── Compose-profile resolution ──────────────────────────────────────
+# Profiles: mock (aap-mock), apme (APME stack), apme-ui (native SPA)
+_PROFILES :=
+
+# AAP mock server: enabled by default, disabled with AAP_MOCK=0
+_MOCK := $(shell echo '$(AAP_MOCK)' | tr '[:upper:]' '[:lower:]')
+ifneq ($(filter 0 false no off,$(_MOCK)),)
+  # Real AAP — no mock
+else
+  _PROFILES += mock
+endif
+
+# APME stack
 ifeq ($(APME_EXTERNAL),1)
-  COMPOSE_PROFILES :=
   override APME_BASE_URL := $(if $(APME_BASE_URL),$(APME_BASE_URL),http://host.containers.internal:8080)
 else
   _UI := $(shell echo '$(APME_UI)' | tr '[:upper:]' '[:lower:]')
   ifneq ($(filter 0 false no off,$(_UI)),)
-    COMPOSE_PROFILES := apme
+    _PROFILES += apme
   else
-    COMPOSE_PROFILES := apme,apme-ui
+    _PROFILES += apme apme-ui
   endif
   override APME_BASE_URL := $(if $(APME_BASE_URL),$(APME_BASE_URL),http://apme-gateway:8080)
 endif
 
-export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO SKIP_BUILD FORCE_EXPORT
+COMPOSE_PROFILES := $(shell echo '$(_PROFILES)' | tr ' ' ',')
+
+export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK
 
 # ── Compose file sets ────────────────────────────────────────────────
 COMPOSE_F     := -f compose.yaml -f compose.portal-apme.yaml
 COMPOSE_F_DEV := $(COMPOSE_F) -f compose.portal-apme.dev.yaml
 
 # ── Plugin lists (overridable: make reload PLUGINS="backstage-apme") ─
-PLUGINS ?= auth-backend-module-rhaap-provider \
-           catalog-backend-module-rhaap \
-           self-service \
-           scaffolder-backend-module-backstage-rhaap \
-           backstage-apme \
-           catalog-backend-module-apme
+# Portal-only plugins (always included)
+_PORTAL_PLUGINS := auth-backend-module-rhaap-provider \
+                   catalog-backend-module-rhaap \
+                   self-service \
+                   scaffolder-backend-module-backstage-rhaap
 
-FE_PLUGINS ?= backstage-apme self-service
+# APME plugins (included only when APME is active)
+_APME_PLUGINS := backstage-apme catalog-backend-module-apme
+
+ifeq ($(APME_EXTERNAL),1)
+  PLUGINS ?= $(_PORTAL_PLUGINS)
+  FE_PLUGINS ?= self-service
+else
+  PLUGINS ?= $(_PORTAL_PLUGINS) $(_APME_PLUGINS)
+  FE_PLUGINS ?= backstage-apme self-service
+endif
 
 # =====================================================================
 #  User-facing targets
@@ -167,8 +188,8 @@ clean: ## Stop + remove volumes + clean copied overlays
 	@rm -f  "$(RHDH_DIR)/.env-abbenay"
 	@rm -rf "$(RHDH_DIR)/abbenay-config"
 	@rm -f  "$(RHDH_DIR)/.portal-compose-mode"
-	@rm -rf "$(RHDH_DIR)/local-plugins/portal-apme"
-	@rm -rf "$(RHDH_DIR)/local-plugins/portal-apme-dev"
+	@rm -rf "$(RHDH_DIR)/local-plugins/portal"
+	@rm -rf "$(RHDH_DIR)/local-plugins/portal-dev"
 	@rm -rf "$(RHDH_DIR)/dynamic-plugins-root"
 	@rm -f  "$(ROOT_DIR)/.env.platform"
 	@echo "Cleanup complete."
@@ -239,8 +260,8 @@ _overlays: _submodule
 	  "$(RHDH_DIR)/configs/app-config" \
 	  "$(RHDH_DIR)/configs/dynamic-plugins" \
 	  "$(RHDH_DIR)/configs/catalog" \
-	  "$(RHDH_DIR)/local-plugins/portal-apme" \
-	  "$(RHDH_DIR)/local-plugins/portal-apme-dev" \
+	  "$(RHDH_DIR)/local-plugins/portal" \
+	  "$(RHDH_DIR)/local-plugins/portal-dev" \
 	  "$(RHDH_DIR)/abbenay-config"
 	@cp "$(OVERLAY)/app-config.portal-apme.yaml" \
 	    "$(RHDH_DIR)/configs/app-config/app-config.portal-apme.yaml"
@@ -269,9 +290,8 @@ _sync-template:
 	SRC="$$REPO/plugins/backstage-apme/templates/apme-register-git-repository"; \
 	DEST="$(RHDH_DIR)/configs/catalog/apme-register-git-repository"; \
 	if [ ! -d "$$SRC" ]; then \
-	  echo "ERROR: APME register template not found at: $$SRC" >&2; \
-	  echo "Set PLUGIN_REPO to ansible-backstage-plugins." >&2; \
-	  exit 1; \
+	  echo "SKIP: APME register template not found (APME not in PLUGIN_REPO)"; \
+	  exit 0; \
 	fi; \
 	rm -f  "$(RHDH_DIR)/configs/catalog/apme-register-git-repository.yaml"; \
 	rm -rf "$$DEST"; \
@@ -320,14 +340,14 @@ _build-tarballs: _export-plugins
 	@echo "=== Pack portal plugin tarballs ==="
 	@$(ROOT_DIR)/scripts/pack-portal-plugins.sh \
 	  "$(PLUGIN_REPO)" \
-	  "$(ROOT_DIR)/local-plugins/portal-apme" \
+	  "$(ROOT_DIR)/local-plugins/portal" \
 	  "$(PLUGINS)"
 
 _maybe-build-tarballs:
 	@if [ "$(SKIP_BUILD)" = "1" ]; then \
-	  echo "SKIP_BUILD=1 — using existing tarballs in local-plugins/portal-apme/"; \
-	  if ! compgen -G "$(ROOT_DIR)/local-plugins/portal-apme/"*.tgz >/dev/null 2>&1; then \
-	    echo "ERROR: No plugin tarballs found in local-plugins/portal-apme/"; \
+	  echo "SKIP_BUILD=1 — using existing tarballs in local-plugins/portal/"; \
+	  if ! compgen -G "$(ROOT_DIR)/local-plugins/portal/"*.tgz >/dev/null 2>&1; then \
+	    echo "ERROR: No plugin tarballs found in local-plugins/portal/"; \
 	    echo "Drop SKIP_BUILD or run: make build-plugins"; \
 	    exit 1; \
 	  fi; \
@@ -336,14 +356,14 @@ _maybe-build-tarballs:
 	fi
 
 _tarballs:
-	@rm -f $(RHDH_DIR)/local-plugins/portal-apme/*.tgz 2>/dev/null || true
-	@if compgen -G "$(ROOT_DIR)/local-plugins/portal-apme/"*.tgz >/dev/null 2>&1; then \
-	  cp "$(ROOT_DIR)/local-plugins/portal-apme/"*.tgz \
-	     "$(RHDH_DIR)/local-plugins/portal-apme/"; \
+	@rm -f $(RHDH_DIR)/local-plugins/portal/*.tgz 2>/dev/null || true
+	@if compgen -G "$(ROOT_DIR)/local-plugins/portal/"*.tgz >/dev/null 2>&1; then \
+	  cp "$(ROOT_DIR)/local-plugins/portal/"*.tgz \
+	     "$(RHDH_DIR)/local-plugins/portal/"; \
 	  echo "Copied plugin tarballs:"; \
-	  ls -1 "$(RHDH_DIR)/local-plugins/portal-apme/"*.tgz; \
+	  ls -1 "$(RHDH_DIR)/local-plugins/portal/"*.tgz; \
 	else \
-	  echo "ERROR: No plugin tarballs found in local-plugins/portal-apme/"; \
+	  echo "ERROR: No plugin tarballs found in local-plugins/portal/"; \
 	  echo ""; \
 	  echo "For dev (bind-mount):     make dev"; \
 	  echo "For tarballs:             make start   (builds from PLUGIN_REPO)"; \

@@ -1,6 +1,6 @@
 # Portal + APME — DEV overlay
 #
-# - Bind-mount each plugin's dist-dynamic under local-plugins/portal-apme-dev/
+# - Bind-mount each plugin's dist-dynamic under local-plugins/portal-dev/
 #   (installer reads these; does NOT mount into dynamic-plugins-root — that
 #   directory is wiped on first install per RHIDP-3939).
 # - Host-mount dynamic-plugins-root (same as rhdh-local compose-dynamic-plugins-root)
@@ -13,20 +13,20 @@ services:
   install-dynamic-plugins:
     volumes:
       - ./dynamic-plugins-root:/dynamic-plugins-root
-      - ${PLUGIN_REPO}/plugins/auth-backend-module-rhaap-provider/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/auth-backend-module-rhaap-provider:Z
-      - ${PLUGIN_REPO}/plugins/catalog-backend-module-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/catalog-backend-module-rhaap:Z
-      - ${PLUGIN_REPO}/plugins/self-service/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/self-service:Z
-      - ${PLUGIN_REPO}/plugins/scaffolder-backend-module-backstage-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/scaffolder-backend-module-backstage-rhaap:Z
-      - ${PLUGIN_REPO}/plugins/backstage-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/backstage-apme:Z
-      - ${PLUGIN_REPO}/plugins/catalog-backend-module-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/catalog-backend-module-apme:Z
+      - ${PLUGIN_REPO}/plugins/auth-backend-module-rhaap-provider/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/auth-backend-module-rhaap-provider:Z
+      - ${PLUGIN_REPO}/plugins/catalog-backend-module-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-rhaap:Z
+      - ${PLUGIN_REPO}/plugins/self-service/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/self-service:Z
+      - ${PLUGIN_REPO}/plugins/scaffolder-backend-module-backstage-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/scaffolder-backend-module-backstage-rhaap:Z
+      - ${PLUGIN_REPO}/plugins/backstage-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/backstage-apme:Z
+      - ${PLUGIN_REPO}/plugins/catalog-backend-module-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-apme:Z
       - ./configs/dynamic-plugins/dynamic-plugins.portal-apme.dev.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,Z
 
   rhdh:
     volumes:
       - ./dynamic-plugins-root:/opt/app-root/src/dynamic-plugins-root
-      - ${PLUGIN_REPO}/plugins/auth-backend-module-rhaap-provider/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/auth-backend-module-rhaap-provider:Z
-      - ${PLUGIN_REPO}/plugins/catalog-backend-module-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/catalog-backend-module-rhaap:Z
-      - ${PLUGIN_REPO}/plugins/self-service/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/self-service:Z
-      - ${PLUGIN_REPO}/plugins/scaffolder-backend-module-backstage-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/scaffolder-backend-module-backstage-rhaap:Z
-      - ${PLUGIN_REPO}/plugins/backstage-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/backstage-apme:Z
-      - ${PLUGIN_REPO}/plugins/catalog-backend-module-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/catalog-backend-module-apme:Z
+      - ${PLUGIN_REPO}/plugins/auth-backend-module-rhaap-provider/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/auth-backend-module-rhaap-provider:Z
+      - ${PLUGIN_REPO}/plugins/catalog-backend-module-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-rhaap:Z
+      - ${PLUGIN_REPO}/plugins/self-service/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/self-service:Z
+      - ${PLUGIN_REPO}/plugins/scaffolder-backend-module-backstage-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/scaffolder-backend-module-backstage-rhaap:Z
+      - ${PLUGIN_REPO}/plugins/backstage-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/backstage-apme:Z
+      - ${PLUGIN_REPO}/plugins/catalog-backend-module-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-apme:Z

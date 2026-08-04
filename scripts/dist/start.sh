@@ -14,7 +14,7 @@ fi
 
 PLUGIN_COUNT=$(find "$ROOT_DIR/local-plugins/portal-apme" -name '*.tgz' 2>/dev/null | wc -l)
 if [ "$PLUGIN_COUNT" -eq 0 ]; then
-  echo "ERROR: No plugin tarballs found in local-plugins/portal-apme/"
+  echo "ERROR: No plugin tarballs found in local-plugins/portal/"
   exit 1
 fi
 
