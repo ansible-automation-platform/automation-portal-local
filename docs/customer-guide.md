@@ -42,7 +42,7 @@ Login with **Sign in with Ansible Automation Platform** using your AAP credentia
 
 ## Multi-org Configuration
 
-Multi-org syncs organizations, users, teams, and job templates from your AAP controller. The `orgs` list is pre-configured in the tarball. To change which organizations are synced, edit `rhdh-local/configs/app-config/app-config.portal-apme.yaml`:
+Multi-org syncs organizations, users, teams, and job templates from your AAP controller. The `orgs` list is pre-configured in the tarball. To change which organizations are synced, edit `rhdh-local/configs/app-config/app-config.portal.yaml`:
 
 ```yaml
 catalog:

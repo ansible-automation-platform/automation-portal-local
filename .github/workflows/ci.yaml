@@ -36,8 +36,8 @@ jobs:
           python3 -c "
           import yaml, sys
           try:
-              yaml.safe_load(open('overlay/compose.portal-apme.yaml'))
-              print('  ✓ overlay/compose.portal-apme.yaml')
+              yaml.safe_load(open('overlay/compose.portal.yaml'))
+              print('  ✓ overlay/compose.portal.yaml')
           except yaml.YAMLError as e:
               print(f'  ✗ {e}')
               sys.exit(1)
@@ -50,8 +50,8 @@ jobs:
           import yaml, sys
           errors = 0
           for path in (
-              'overlay/dynamic-plugins.portal-apme.yaml',
-              'overlay/dynamic-plugins.portal-apme.dev.yaml',
+              'overlay/dynamic-plugins.portal.yaml',
+              'overlay/dynamic-plugins.portal.dev.yaml',
           ):
               try:
                   yaml.safe_load(open(path))
@@ -72,8 +72,8 @@ jobs:
           python3 -c "
           import yaml, sys
           try:
-              yaml.safe_load(open('overlay/app-config.portal-apme.yaml'))
-              print('  ✓ overlay/app-config.portal-apme.yaml')
+              yaml.safe_load(open('overlay/app-config.portal.yaml'))
+              print('  ✓ overlay/app-config.portal.yaml')
           except yaml.YAMLError as e:
               print(f'  ✗ {e}')
               sys.exit(1)
@@ -123,7 +123,7 @@ jobs:
       - name: Verify plugin tarball references are consistent
         run: |
           echo "Checking that all .tgz references in dynamic-plugins YAML follow the expected naming pattern..."
-          YAML="overlay/dynamic-plugins.portal-apme.yaml"
+          YAML="overlay/dynamic-plugins.portal.yaml"
           ERRORS=0
           while IFS= read -r line; do
             tgz=$(echo "$line" | grep -oP '[a-z][\w.-]+-dynamic-[\w.+-]+\.tgz' || true)

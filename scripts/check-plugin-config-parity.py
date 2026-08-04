@@ -3,7 +3,7 @@
 
 RHDH registers frontend apiFactories / routes / mountPoints from pluginConfig,
 not from the plugin package alone. Updating only
-overlay/dynamic-plugins.portal-apme.dev.yaml leaves ``make start`` broken.
+overlay/dynamic-plugins.portal.dev.yaml leaves ``make start`` broken.
 
 Usage:
   python3 scripts/check-plugin-config-parity.py
@@ -22,8 +22,8 @@ except ImportError as exc:  # pragma: no cover
     raise SystemExit(2) from exc
 
 ROOT = Path(__file__).resolve().parents[1]
-DEV_YAML = ROOT / "overlay" / "dynamic-plugins.portal-apme.dev.yaml"
-TARBALL_YAML = ROOT / "overlay" / "dynamic-plugins.portal-apme.yaml"
+DEV_YAML = ROOT / "overlay" / "dynamic-plugins.portal.dev.yaml"
+TARBALL_YAML = ROOT / "overlay" / "dynamic-plugins.portal.yaml"
 
 # Plugin IDs whose host contract must match between DEV and tarball modes.
 FRONTEND_PARITY_IDS = (
@@ -177,8 +177,8 @@ def main() -> int:
         for err in errors:
             print(f"  ✗ {err}", file=sys.stderr)
         print(
-            "\nUpdate overlay/dynamic-plugins.portal-apme.yaml to match "
-            "overlay/dynamic-plugins.portal-apme.dev.yaml for the host contract "
+            "\nUpdate overlay/dynamic-plugins.portal.yaml to match "
+            "overlay/dynamic-plugins.portal.dev.yaml for the host contract "
             "(see AGENTS.md).",
             file=sys.stderr,
         )

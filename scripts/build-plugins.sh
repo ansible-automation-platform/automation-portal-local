@@ -9,7 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-DEST_DIR="$ROOT_DIR/local-plugins/portal-apme"
+DEST_DIR="$ROOT_DIR/local-plugins/portal"
 
 UPSTREAM_DIR="${1:-}"
 BRANCH="${2:-}"
@@ -21,7 +21,7 @@ if [ -z "$UPSTREAM_DIR" ]; then
   echo "Usage: ./scripts/build-plugins.sh <path-to-ansible-backstage-plugins> [branch]"
   echo ""
   echo "Exports portal plugins (yarn export-dynamic) and packs .tgz into"
-  echo "local-plugins/portal-apme/. Prefer: make build-plugins / make start"
+  echo "local-plugins/portal/. Prefer: make build-plugins / make start"
   exit 1
 fi
 

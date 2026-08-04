@@ -128,7 +128,7 @@ sudo firewall-cmd --reload
 
 ### "Plugin host-config parity check FAILED"
 
-**Cause:** The DEV overlay (`dynamic-plugins.portal-apme.dev.yaml`) and tarball overlay (`dynamic-plugins.portal-apme.yaml`) have different enabled plugins.
+**Cause:** The DEV overlay (`dynamic-plugins.portal.dev.yaml`) and tarball overlay (`dynamic-plugins.portal.yaml`) have different enabled plugins.
 
 **Fix:** Ensure both overlays have the same plugins enabled/disabled. The parity check only compares plugins that are enabled — disabled plugins in either file are ignored.
 

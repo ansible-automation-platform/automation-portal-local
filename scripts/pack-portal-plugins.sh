@@ -1,6 +1,6 @@
 #!/bin/bash
-# Pack portal plugin dist-dynamic directories into local-plugins/portal-apme/*.tgz
-# and rewrite overlay/dynamic-plugins.portal-apme.yaml package filenames.
+# Pack portal plugin dist-dynamic directories into local-plugins/portal/*.tgz
+# and rewrite overlay/dynamic-plugins.portal.yaml package filenames.
 #
 # Prerequisites: each plugin already has dist-dynamic/ (e.g. after yarn export-dynamic).
 # This script is intentionally non-destructive — it does not run BUILD_TYPE=portal
@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 PLUGIN_REPO="${1:-}"
-DEST_DIR="${2:-$ROOT_DIR/local-plugins/portal-apme}"
+DEST_DIR="${2:-$ROOT_DIR/local-plugins/portal}"
 # Space-separated plugin directory names under plugins/
 PLUGINS_LIST="${3:-}"
 
@@ -36,9 +36,9 @@ for name in $PLUGINS_LIST; do
   PACKED=$((PACKED + 1))
 done
 
-PLUGINS_YAML="$ROOT_DIR/overlay/dynamic-plugins.portal-apme.yaml"
+PLUGINS_YAML="$ROOT_DIR/overlay/dynamic-plugins.portal.yaml"
 if [ -f "$PLUGINS_YAML" ]; then
-  echo "Updating plugin references in dynamic-plugins.portal-apme.yaml…"
+  echo "Updating plugin references in dynamic-plugins.portal.yaml…"
   for tgz in "$DEST_DIR"/*.tgz; do
     filename=$(basename "$tgz")
     # ansible-plugin-backstage-apme-dynamic-0.1.0-dev.abc123.tgz → ansible-plugin-backstage-apme-dynamic

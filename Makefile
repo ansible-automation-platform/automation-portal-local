@@ -58,8 +58,8 @@ COMPOSE_PROFILES := $(shell echo '$(_PROFILES)' | tr ' ' ',')
 export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK
 
 # ── Compose file sets ────────────────────────────────────────────────
-COMPOSE_F     := -f compose.yaml -f compose.portal-apme.yaml
-COMPOSE_F_DEV := $(COMPOSE_F) -f compose.portal-apme.dev.yaml
+COMPOSE_F     := -f compose.yaml -f compose.portal.yaml
+COMPOSE_F_DEV := $(COMPOSE_F) -f compose.portal.dev.yaml
 
 # ── Plugin lists (overridable: make reload PLUGINS="backstage-apme") ─
 # Portal-only plugins (always included)
@@ -128,12 +128,12 @@ check-plugin-parity: ## Fail if DEV vs tarball dynamic-plugins host contracts dr
 	@python3 "$(ROOT_DIR)/scripts/check-plugin-config-parity.py"
 
 stop: ## Stop all services (auto-detects mode)
-	@if [ ! -f "$(RHDH_DIR)/compose.portal-apme.yaml" ]; then \
+	@if [ ! -f "$(RHDH_DIR)/compose.portal.yaml" ]; then \
 	  echo "Portal does not appear to be running."; exit 0; \
 	fi
 	@cd $(RHDH_DIR) && \
 	  if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
-	  if [ -f compose.portal-apme.dev.yaml ]; then \
+	  if [ -f compose.portal.dev.yaml ]; then \
 	    PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) down; \
 	  else \
 	    podman compose $(COMPOSE_F) down; \
@@ -171,18 +171,18 @@ export-plugins: _export-plugins ## Export dist-dynamic for all portal plugins
 build-plugins: _build-tarballs ## Build plugin tarballs from PLUGIN_REPO (export + pack)
 
 clean: ## Stop + remove volumes + clean copied overlays
-	@if [ -f "$(RHDH_DIR)/compose.portal-apme.yaml" ]; then \
+	@if [ -f "$(RHDH_DIR)/compose.portal.yaml" ]; then \
 	  echo "Stopping services and removing volumes…"; \
 	  cd $(RHDH_DIR) && \
 	  if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
-	  podman compose -f compose.yaml -f compose.portal-apme.yaml down -v 2>/dev/null || true; \
+	  podman compose -f compose.yaml -f compose.portal.yaml down -v 2>/dev/null || true; \
 	fi
 	@echo "Removing overlay files from rhdh-local…"
-	@rm -f  "$(RHDH_DIR)/compose.portal-apme.yaml"
-	@rm -f  "$(RHDH_DIR)/compose.portal-apme.dev.yaml"
-	@rm -f  "$(RHDH_DIR)/configs/app-config/app-config.portal-apme.yaml"
-	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml"
-	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal-apme.dev.yaml"
+	@rm -f  "$(RHDH_DIR)/compose.portal.yaml"
+	@rm -f  "$(RHDH_DIR)/compose.portal.dev.yaml"
+	@rm -f  "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
+	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"
+	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
 	@rm -rf "$(RHDH_DIR)/configs/catalog/apme-register-git-repository"
 	@rm -f  "$(RHDH_DIR)/.env"
 	@rm -f  "$(RHDH_DIR)/.env-abbenay"
@@ -205,7 +205,7 @@ clean-images: clean ## clean + remove APME container images
 logs: ## Follow compose logs (all services)
 	@cd $(RHDH_DIR) && \
 	  if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
-	  if [ -f compose.portal-apme.dev.yaml ]; then \
+	  if [ -f compose.portal.dev.yaml ]; then \
 	    PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) logs -f; \
 	  else \
 	    podman compose $(COMPOSE_F) logs -f; \
@@ -235,13 +235,13 @@ _prereqs:
 	@command -v git    >/dev/null || { echo "ERROR: git is required."; exit 1; }
 
 _stop-if-running:
-	@if [ -f "$(RHDH_DIR)/compose.portal-apme.yaml" ]; then \
+	@if [ -f "$(RHDH_DIR)/compose.portal.yaml" ]; then \
 	  cd $(RHDH_DIR) && \
 	  if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
 	  RUNNING=$$(podman compose $(COMPOSE_F) ps -q 2>/dev/null | head -1); \
 	  if [ -n "$$RUNNING" ]; then \
 	    echo "Stopping existing stack before switching modes…"; \
-	    if [ -f compose.portal-apme.dev.yaml ]; then \
+	    if [ -f compose.portal.dev.yaml ]; then \
 	      PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) down; \
 	    else \
 	      podman compose $(COMPOSE_F) down; \
@@ -263,10 +263,10 @@ _overlays: _submodule
 	  "$(RHDH_DIR)/local-plugins/portal" \
 	  "$(RHDH_DIR)/local-plugins/portal-dev" \
 	  "$(RHDH_DIR)/abbenay-config"
-	@cp "$(OVERLAY)/app-config.portal-apme.yaml" \
-	    "$(RHDH_DIR)/configs/app-config/app-config.portal-apme.yaml"
-	@cp "$(OVERLAY)/compose.portal-apme.yaml" \
-	    "$(RHDH_DIR)/compose.portal-apme.yaml"
+	@cp "$(OVERLAY)/app-config.portal.yaml" \
+	    "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
+	@cp "$(OVERLAY)/compose.portal.yaml" \
+	    "$(RHDH_DIR)/compose.portal.yaml"
 	@if [ ! -f "$(RHDH_DIR)/abbenay-config/config.yaml" ]; then \
 	  cp "$(OVERLAY)/abbenay/config.yaml.example" \
 	     "$(RHDH_DIR)/abbenay-config/config.yaml"; \
@@ -274,16 +274,16 @@ _overlays: _submodule
 	fi
 
 _overlays-dev: _overlays
-	@cp "$(OVERLAY)/compose.portal-apme.dev.yaml" \
-	    "$(RHDH_DIR)/compose.portal-apme.dev.yaml"
-	@cp "$(OVERLAY)/dynamic-plugins.portal-apme.dev.yaml" \
-	    "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal-apme.dev.yaml"
+	@cp "$(OVERLAY)/compose.portal.dev.yaml" \
+	    "$(RHDH_DIR)/compose.portal.dev.yaml"
+	@cp "$(OVERLAY)/dynamic-plugins.portal.dev.yaml" \
+	    "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
 
 _overlays-tarball: _overlays
-	@rm -f "$(RHDH_DIR)/compose.portal-apme.dev.yaml"
-	@rm -f "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal-apme.dev.yaml"
-	@cp "$(OVERLAY)/dynamic-plugins.portal-apme.yaml" \
-	    "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml"
+	@rm -f "$(RHDH_DIR)/compose.portal.dev.yaml"
+	@rm -f "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
+	@cp "$(OVERLAY)/dynamic-plugins.portal.yaml" \
+	    "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"
 
 _sync-template:
 	@REPO="$(PLUGIN_REPO)"; \
