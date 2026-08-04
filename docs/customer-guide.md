@@ -28,6 +28,7 @@ AAP_PUBLIC_URL=https://your-aap-controller.example.com
 AAP_TOKEN=<your-aap-token>
 OAUTH_CLIENT_ID=<your-oauth-client-id>
 OAUTH_CLIENT_SECRET=<your-oauth-client-secret>
+RHDH_IMAGE=registry.access.redhat.com/rhdh/rhdh-hub-rhel9:1.10   # no login required
 NODE_TLS_REJECT_UNAUTHORIZED=0    # dev only — for self-signed AAP certs
 ```
 
@@ -42,7 +43,7 @@ Login with **Sign in with Ansible Automation Platform** using your AAP credentia
 
 ## Multi-org Configuration
 
-Multi-org syncs organizations, users, teams, and job templates from your AAP controller. The `orgs` list is pre-configured in the tarball. To change which organizations are synced, edit `rhdh-local/configs/app-config/app-config.portal.yaml`:
+Multi-org syncs organizations, users, teams, and job templates from your AAP controller. The `orgs` list is pre-configured in the tarball. To change which organizations are synced, edit `overlay/app-config.portal.yaml` and restart:
 
 ```yaml
 catalog:
@@ -72,7 +73,7 @@ make stop && make start SKIP_BUILD=1
 ## Running on AWS EC2
 
 1. Launch an EC2 instance (RHEL 9 or Fedora recommended, t3.xlarge or larger)
-2. Install Podman: `sudo dnf install -y podman podman-compose`
+2. Install Podman: `sudo dnf install -y podman` (RHEL 9 / Fedora include `podman compose` natively)
 3. Upload the tarball: `scp automation-portal-local-*.tar.gz ec2-user@<ip>:~`
 4. SSH in and follow the [Quick Start](#quick-start) steps
 5. Access the portal at `http://<ec2-public-ip>:7007`
