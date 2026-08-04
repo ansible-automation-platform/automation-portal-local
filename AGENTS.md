@@ -6,10 +6,10 @@ Rules for AI agents and humans working in this repository.
 
 | Target | Config | Purpose |
 |--------|--------|---------|
-| `make dev` | `overlay/dynamic-plugins.portal-apme.dev.yaml` | Edit plugin source; bind-mount `dist-dynamic` |
-| `make start` | `overlay/dynamic-plugins.portal-apme.yaml` | Production-shaped tarballs / EAP parity |
+| `make dev` | `overlay/dynamic-plugins.portal.dev.yaml` | Edit plugin source; bind-mount `dist-dynamic` |
+| `make start` | `overlay/dynamic-plugins.portal.yaml` | Production-shaped tarballs / EAP parity |
 
-Both modes must load the same **host contract** for Portal + APME plugins. Package paths differ (`.tgz` vs `local-plugins/portal-apme-dev/…`); `pluginConfig` must not.
+Both modes must load the same **host contract** for enabled plugins. Package paths differ (`.tgz` vs `local-plugins/portal-dev/…`); `pluginConfig` must not. APME plugins are optional — when disabled, the parity check skips them.
 
 ## Non-negotiable: host contract parity
 
@@ -27,8 +27,8 @@ pluginConfig:
 
 **Any change** to host wiring — `apiFactories`, `dynamicRoutes`, `mountPoints`, `entityTabs`, `scaffolderFieldExtensions`, backend `pluginConfig` — must update **both**:
 
-1. `overlay/dynamic-plugins.portal-apme.dev.yaml`
-2. `overlay/dynamic-plugins.portal-apme.yaml`
+1. `overlay/dynamic-plugins.portal.dev.yaml`
+2. `overlay/dynamic-plugins.portal.yaml`
 
 in the **same change set**. Updating only DEV leaves `make start` broken (e.g. Git Repos `NotImplementedError` for `plugin.rhaap.git-repositories.extensions`).
 
