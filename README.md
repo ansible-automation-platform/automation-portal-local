@@ -40,7 +40,7 @@ make start SKIP_BUILD=1
 
 Portal UI: http://localhost:7007
 
-**Updating plugins:** Copy new `.tgz` files to `local-plugins/portal/`, then `make stop && make start SKIP_BUILD=1`.
+**Updating plugins:** Copy new `.tgz` files to `local-plugins/portal/`, then `make stop && make start SKIP_BUILD=1`. See [Updating plugins](#updating-plugins-eap-drops) for details.
 
 **Cleanup:** `make stop` (stop services) or `make clean` (stop + remove volumes).
 
@@ -92,13 +92,14 @@ AAP_PUBLIC_URL=https://your-aap-controller.example.com
 AAP_TOKEN=<your-aap-token>
 OAUTH_CLIENT_ID=<your-oauth-client-id>
 OAUTH_CLIENT_SECRET=<your-oauth-client-secret>
+NODE_TLS_REJECT_UNAUTHORIZED=0    # dev only — for self-signed AAP certs. Use proper certs in production.
 ```
 
 Only `db` and `rhdh` containers start. APME and mock services are skipped via compose profiles.
 
 #### Multi-org support
 
-Multi-org is pre-configured in `overlay/app-config.portal-apme.yaml`. Edit the `orgs` list under `catalog.providers.rhaap.<environment>` to match your AAP organizations:
+Multi-org is pre-configured in `overlay/app-config.portal-apme.yaml`. For tarball deliveries, this is already set. For custom setups, edit the `orgs` list under `catalog.providers.rhaap.<environment>` to match your AAP organizations:
 
 ```yaml
 catalog:
@@ -148,10 +149,15 @@ APME_EXTERNAL=1
 
 ## Prerequisites
 
-- **Podman** 4.x+ with `podman compose`
-- **git** (for submodule management)
-- **Node.js** 22.x + Corepack (for building plugins locally — not needed for `SKIP_BUILD=1`)
+- **Podman** 4.x+ with `podman compose` (or Docker 28.1.0+ with Compose)
 - **8 GB+ RAM** (RHDH + PostgreSQL; +4 GB when APME stack is enabled)
+
+For developers building plugins locally:
+
+- **git** (for submodule management)
+- **Node.js** 22.x + Corepack
+
+Customers using pre-built tarballs (`SKIP_BUILD=1`) only need Podman.
 
 ## Getting Plugins
 
@@ -219,7 +225,7 @@ Use this when you want pre-built plugins from a CI run — no local Node.js or b
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `AAP_HOST_URL` | Yes | — | AAP controller URL (e.g. `https://aap.example.com`) |
-| `AAP_PUBLIC_URL` | Yes | same as `AAP_HOST_URL` | AAP URL reachable from the browser (for OAuth redirect) |
+| `AAP_PUBLIC_URL` | No | same as `AAP_HOST_URL` | AAP URL reachable from the browser (for OAuth redirect). Required when `AAP_MOCK=0`. |
 | `AAP_TOKEN` | Yes | — | AAP API token |
 | `OAUTH_CLIENT_ID` | Yes | — | RHAAP OAuth client ID |
 | `OAUTH_CLIENT_SECRET` | Yes | — | RHAAP OAuth client secret |
@@ -296,7 +302,7 @@ make stop
 tar czf automation-portal-local-multiorg.tar.gz \
   --exclude='.git' --exclude='node_modules' \
   --exclude='rhdh-local/.git' --exclude='*.log' \
-  -C /path/to automation-portal-local
+  -C /path/to/parent-dir automation-portal-local
 ```
 
 ### Updating plugins (EAP drops)
