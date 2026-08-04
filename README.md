@@ -286,24 +286,30 @@ For PMs and EAP coordinators — produce a self-contained tar that customers can
 **Option 2: Manual packaging**
 
 ```bash
-# 1. Build plugins from a specific branch
+# 1. Build plugins from the desired branch
 cd /path/to/ansible-backstage-plugins
-git checkout main
+git checkout main   # or feat/sync-ux-signals
 
-# 2. Build plugin tarballs
+# 2. Build plugin tarballs into automation-portal-local
 cd /path/to/automation-portal-local
 make build-plugins PLUGIN_REPO=/path/to/ansible-backstage-plugins
 
-# 3. Verify (optional)
+# 3. Verify (optional — starts portal, confirm it works)
 make start SKIP_BUILD=1
 make stop
 
-# 4. Package
+# 4. Package (from the parent directory)
+cd /path/to
 tar czf automation-portal-local-multiorg.tar.gz \
-  --exclude='.git' --exclude='node_modules' \
-  --exclude='rhdh-local/.git' --exclude='*.log' \
-  -C /path/to/parent-dir automation-portal-local
+  --exclude='.git' \
+  --exclude='rhdh-local/.git' \
+  --exclude='rhdh-local/dynamic-plugins-root' \
+  --exclude='node_modules' \
+  --exclude='*.log' \
+  automation-portal-local
 ```
+
+The tarball includes the `rhdh-local` submodule, plugin tarballs in `local-plugins/portal/`, and all overlay configs. Customers only need Podman installed.
 
 ### Updating plugins (EAP drops)
 
