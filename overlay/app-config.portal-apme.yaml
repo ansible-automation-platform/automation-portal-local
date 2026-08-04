@@ -173,6 +173,8 @@ dynamicPlugins:
           priority: 80
           title: ''
           to: catalog
+        default.help:
+          enabled: false
         default.create:
           icon: add
           priority: 40
