@@ -85,6 +85,37 @@ services:
     volumes:
       - ./configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,z
 
+  # ── Abbenay AI (Tier 2 remediation + Gateway ADR-070 admin proxy) ──
+  # Profile "apme": skipped when APME_EXTERNAL=1 (use host tox -e up Abbenay instead).
+  # Unlike the APME pod (shared netns → 127.0.0.1), compose uses a bridge network, so
+  # Abbenay binds 0.0.0.0. Ports are NOT published to the host.
+  # Provider API keys: copy .env-abbenay.example → .env-abbenay (synced into rhdh-local).
+  apme-abbenay:
+    profiles: ["apme"]
+    image: ghcr.io/redhat-developer/abbenay:${ABBENAY_IMAGE_TAG:-v2026.8.1}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-abbenay
+    # Use command (not args) — docker-compose schema rejects args on services.
+    command:
+      - "web"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8787"
+      - "--grpc-host"
+      - "0.0.0.0"
+      - "--grpc-port"
+      - "50057"
+    env_file:
+      - .env-abbenay
+    environment:
+      APME_ABBENAY_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
+      ABBENAY_API_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
+      XDG_RUNTIME_DIR: /tmp/abbenay-run
+      XDG_CONFIG_HOME: /home/abbenay/.config
+    volumes:
+      - ./abbenay-config:/home/abbenay/.config/abbenay:Z
+
   # ── APME Gateway (REST API + gRPC Reporting) ──
   # Profile "apme": skipped when APME_EXTERNAL=1.
   apme-gateway:
@@ -100,12 +131,17 @@ services:
       APME_PRIMARY_ADDRESS: apme-primary:50051
       APME_DB_PATH: /data/apme.db
       APME_GATEWAY_GRPC_LISTEN: 0.0.0.0:50060
+      APME_ABBENAY_HTTP_URL: http://apme-abbenay:8787
+      APME_ABBENAY_HTTP_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
+      APME_ABBENAY_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
       OPENSSL_CONF: ${OPENSSL_CONF:-}
       OPENSSL_FIPS: "0"
       SSL_CERT_FILE: /etc/pki/tls/certs/ca-bundle.crt
       REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-bundle.crt
     depends_on:
       apme-primary:
+        condition: service_started
+      apme-abbenay:
         condition: service_started
 
   # ── APME Engine (Primary orchestrator) ──
@@ -128,7 +164,13 @@ services:
       DEP_AUDIT_GRPC_ADDRESS: "127.0.0.1:50059"
       APME_GALAXY_PROXY_URL: "http://127.0.0.1:8765"
       APME_REPORTING_ENDPOINT: "apme-gateway:50060"
+      APME_ABBENAY_ADDR: apme-abbenay:50057
+      APME_ABBENAY_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
+      APME_AI_MODEL: ${APME_AI_MODEL:-}
       OPENSSL_CONF: ${OPENSSL_CONF:-}
+    depends_on:
+      apme-abbenay:
+        condition: service_started
 
   # ── APME Validators (share primary's network namespace) ──
   apme-native:

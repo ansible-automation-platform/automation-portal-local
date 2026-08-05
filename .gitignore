@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env-abbenay.example
 .env.platform
 
 # Plugin tarballs (built or downloaded, not committed)
@@ -21,6 +22,8 @@ rhdh-local/local-plugins/portal-apme/
 rhdh-local/local-plugins/portal-apme-dev/
 rhdh-local/dynamic-plugins-root/
 rhdh-local/.env
+rhdh-local/.env-abbenay
+rhdh-local/abbenay-config/
 rhdh-local/.portal-compose-mode
 
 # IDE / editor

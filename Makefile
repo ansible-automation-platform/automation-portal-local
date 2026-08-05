@@ -164,6 +164,8 @@ clean: ## Stop + remove volumes + clean copied overlays
 	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal-apme.dev.yaml"
 	@rm -rf "$(RHDH_DIR)/configs/catalog/apme-register-git-repository"
 	@rm -f  "$(RHDH_DIR)/.env"
+	@rm -f  "$(RHDH_DIR)/.env-abbenay"
+	@rm -rf "$(RHDH_DIR)/abbenay-config"
 	@rm -f  "$(RHDH_DIR)/.portal-compose-mode"
 	@rm -rf "$(RHDH_DIR)/local-plugins/portal-apme"
 	@rm -rf "$(RHDH_DIR)/local-plugins/portal-apme-dev"
@@ -238,11 +240,17 @@ _overlays: _submodule
 	  "$(RHDH_DIR)/configs/dynamic-plugins" \
 	  "$(RHDH_DIR)/configs/catalog" \
 	  "$(RHDH_DIR)/local-plugins/portal-apme" \
-	  "$(RHDH_DIR)/local-plugins/portal-apme-dev"
+	  "$(RHDH_DIR)/local-plugins/portal-apme-dev" \
+	  "$(RHDH_DIR)/abbenay-config"
 	@cp "$(OVERLAY)/app-config.portal-apme.yaml" \
 	    "$(RHDH_DIR)/configs/app-config/app-config.portal-apme.yaml"
 	@cp "$(OVERLAY)/compose.portal-apme.yaml" \
 	    "$(RHDH_DIR)/compose.portal-apme.yaml"
+	@if [ ! -f "$(RHDH_DIR)/abbenay-config/config.yaml" ]; then \
+	  cp "$(OVERLAY)/abbenay/config.yaml.example" \
+	     "$(RHDH_DIR)/abbenay-config/config.yaml"; \
+	  echo "Seeded rhdh-local/abbenay-config/config.yaml from overlay example"; \
+	fi
 
 _overlays-dev: _overlays
 	@cp "$(OVERLAY)/compose.portal-apme.dev.yaml" \
@@ -288,6 +296,15 @@ _env-files:
 	  mv "$(RHDH_DIR)/.env.tmp" "$(RHDH_DIR)/.env"; \
 	  echo "$$pair" >> "$(RHDH_DIR)/.env"; \
 	done
+	@# Abbenay env_file (required by compose even when empty / APME_EXTERNAL=1)
+	@if [ -f "$(ROOT_DIR)/.env-abbenay" ]; then \
+	  cp "$(ROOT_DIR)/.env-abbenay" "$(RHDH_DIR)/.env-abbenay"; \
+	elif [ -f "$(ROOT_DIR)/.env-abbenay.example" ]; then \
+	  cp "$(ROOT_DIR)/.env-abbenay.example" "$(RHDH_DIR)/.env-abbenay"; \
+	  echo "NOTE: Using .env-abbenay.example (no secrets). For AI keys: cp .env-abbenay.example .env-abbenay"; \
+	else \
+	  printf 'APME_ABBENAY_TOKEN=apme-dev-token\n' > "$(RHDH_DIR)/.env-abbenay"; \
+	fi
 	@if [ "$(APME_EXTERNAL)" = "1" ]; then \
 	  URL="$(APME_BASE_URL)"; \
 	  PROBE="$${URL//host.containers.internal/127.0.0.1}"; \
