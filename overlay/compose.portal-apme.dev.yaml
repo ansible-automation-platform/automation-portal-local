@@ -12,7 +12,7 @@
 services:
   install-dynamic-plugins:
     volumes:
-      - ./dynamic-plugins-root:/dynamic-plugins-root
+      - ./dynamic-plugins-root:/dynamic-plugins-root:Z
       - ${PLUGIN_REPO}/plugins/auth-backend-module-rhaap-provider/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/auth-backend-module-rhaap-provider:Z
       - ${PLUGIN_REPO}/plugins/catalog-backend-module-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/catalog-backend-module-rhaap:Z
       - ${PLUGIN_REPO}/plugins/self-service/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/self-service:Z
@@ -23,7 +23,7 @@ services:
 
   rhdh:
     volumes:
-      - ./dynamic-plugins-root:/opt/app-root/src/dynamic-plugins-root
+      - ./dynamic-plugins-root:/opt/app-root/src/dynamic-plugins-root:Z
       - ${PLUGIN_REPO}/plugins/auth-backend-module-rhaap-provider/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/auth-backend-module-rhaap-provider:Z
       - ${PLUGIN_REPO}/plugins/catalog-backend-module-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/catalog-backend-module-rhaap:Z
       - ${PLUGIN_REPO}/plugins/self-service/dist-dynamic:/opt/app-root/src/local-plugins/portal-apme-dev/self-service:Z

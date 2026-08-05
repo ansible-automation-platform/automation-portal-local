@@ -7,6 +7,13 @@ ansible:
     enabled: true
     enableAi: true
     mockMode: false
+    # Optional: restrict AI/Galaxy/settings mutations to these user entity refs.
+    # When empty (default), any authenticated user can mutate (local DEV).
+    # settingsAdminEntityRefs:
+    #   - user:default/guest
+    # Optional: allow http:// and private hosts for Galaxy/baseUrl (local hubs only).
+    # allowHttpOutboundUrls: true
+    # allowPrivateOutboundUrls: true
   creatorService:
     baseUrl: 127.0.0.1
     port: '8000'

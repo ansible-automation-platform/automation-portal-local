@@ -98,7 +98,7 @@ dev: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _overla
 dev-prompt: ## Re-enter the interactive DEV menu (R/F/S) without restarting compose
 	@DEV_PROMPT=1 "$(ROOT_DIR)/scripts/dev-prompt.sh"
 
-start: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _prep-install-root _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
+start: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _prep-install-root _prep-abbenay-secrets _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
 	@echo "Starting services…"
 	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F) up -d
 	@$(MAKE) --no-print-directory _banner
@@ -121,7 +121,7 @@ stop: ## Stop all services (auto-detects mode)
 
 restart: stop dev ## Restart DEV mode (stop + dev)
 
-reload: _prereqs _export-plugins ## Re-export changed plugins, reinstall, restart rhdh
+reload: _prereqs _export-plugins _seed-extensions _prep-dev-root ## Re-export changed plugins, reinstall, restart rhdh
 	@echo "Re-running install-dynamic-plugins…"
 	@cd $(RHDH_DIR) && PLUGIN_REPO="$(PLUGIN_REPO)" \
 	  podman compose $(COMPOSE_F_DEV) run --rm --no-deps install-dynamic-plugins
@@ -237,12 +237,18 @@ _overlays: _submodule
 	  "$(RHDH_DIR)/configs/app-config" \
 	  "$(RHDH_DIR)/configs/dynamic-plugins" \
 	  "$(RHDH_DIR)/configs/catalog" \
+	  "$(RHDH_DIR)/containers/abbenay" \
+	  "$(RHDH_DIR)/data/abbenay-secrets" \
 	  "$(RHDH_DIR)/local-plugins/portal-apme" \
 	  "$(RHDH_DIR)/local-plugins/portal-apme-dev"
 	@cp "$(OVERLAY)/app-config.portal-apme.yaml" \
 	    "$(RHDH_DIR)/configs/app-config/app-config.portal-apme.yaml"
 	@cp "$(OVERLAY)/compose.portal-apme.yaml" \
 	    "$(RHDH_DIR)/compose.portal-apme.yaml"
+	@cp "$(OVERLAY)/containers/abbenay/config.yaml" \
+	    "$(RHDH_DIR)/containers/abbenay/config.yaml"
+	@cp "$(OVERLAY)/containers/abbenay/entrypoint.sh" \
+	    "$(RHDH_DIR)/containers/abbenay/entrypoint.sh"
 
 _overlays-dev: _overlays
 	@cp "$(OVERLAY)/compose.portal-apme.dev.yaml" \
@@ -357,7 +363,35 @@ _prep-install-root:
 	    || true; \
 	fi
 
-_prep-dev-root: _prep-install-root
+_prep-dev-root: _prep-install-root _prep-abbenay-secrets
+
+_prep-abbenay-secrets:
+	@mkdir -p "$(RHDH_DIR)/data/abbenay-secrets"
+	@# World rwx/rw: RHDH (uid 1001) and Abbenay share this bind mount with different
+	@# ownership mapping; tighter modes cause EACCES on configure / key reload.
+	@chmod 777 "$(RHDH_DIR)/data/abbenay-secrets" 2>/dev/null || true
+	@# Ensure watch-loop cold start always has a file to observe.
+	@if [ ! -f "$(RHDH_DIR)/data/abbenay-secrets/providers.env" ]; then \
+	  printf '%s\n' \
+	    '# Abbenay provider API keys (container mode — no keytar).' \
+	    '# Written by Portal catalog; loaded by the Abbenay entrypoint (non-shell parser).' \
+	    '' > "$(RHDH_DIR)/data/abbenay-secrets/providers.env"; \
+	fi
+	@chmod 666 "$(RHDH_DIR)/data/abbenay-secrets/providers.env" 2>/dev/null || true
+	@VOL_DATA="$(HOME)/.local/share/containers/storage/volumes/rhdh-local_apme-abbenay-secrets/_data/providers.env"; \
+	if [ ! -s "$(RHDH_DIR)/data/abbenay-secrets/providers.env" ] && [ -f "$$VOL_DATA" ]; then \
+	  echo "Migrating providers.env from legacy podman volume…"; \
+	  cp "$$VOL_DATA" "$(RHDH_DIR)/data/abbenay-secrets/providers.env"; \
+	  chmod 666 "$(RHDH_DIR)/data/abbenay-secrets/providers.env"; \
+	fi
+	@if command -v getenforce >/dev/null 2>&1 && [ "$$(getenforce 2>/dev/null)" = "Enforcing" ]; then \
+	  if sudo chcon -R -t container_file_t -l s0 "$(RHDH_DIR)/data/abbenay-secrets" 2>/dev/null; then \
+	    echo "SELinux: relabeled data/abbenay-secrets for shared container access"; \
+	  else \
+	    echo "WARN: could not relabel $(RHDH_DIR)/data/abbenay-secrets (Abbenay may not read API keys)"; \
+	    echo "      sudo chcon -R -t container_file_t -l s0 $(RHDH_DIR)/data/abbenay-secrets"; \
+	  fi; \
+	fi
 
 _seed-extensions:
 	@mkdir -p "$(RHDH_DIR)/dynamic-plugins-root"

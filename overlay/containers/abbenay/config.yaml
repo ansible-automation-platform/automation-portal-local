@@ -1,0 +1,15 @@
+# Abbenay seed config for automation-portal-local compose (ADR-070).
+#
+# Copied to a writable volume on first container start (apme#498). Add providers
+# in Portal: Git Repos → Quality settings → AI providers. In containers, API keys
+# use ABBENAY_PROVIDER_* env vars (see docs/CONTAINER.md in Abbenay).
+
+server:
+  host: "0.0.0.0"
+  api_token_env: ABBENAY_API_TOKEN
+
+consumers:
+  apme:
+    token_env: APME_ABBENAY_TOKEN
+    capabilities:
+      inline_policy: true

@@ -68,6 +68,7 @@ services:
     environment:
       ENABLE_AUTH_PROVIDER_MODULE_OVERRIDE: 'true'
       APME_BASE_URL: ${APME_BASE_URL:-http://apme-gateway:8080}
+      APME_ABBENAY_CONTAINER_SECRETS: '1'
     extra_hosts:
       - "host.containers.internal:host-gateway"
     depends_on:
@@ -77,6 +78,8 @@ services:
         condition: service_healthy
     volumes:
       - ./configs/app-config/app-config.portal-apme.yaml:/opt/app-root/src/configs/app-config/app-config.local.yaml:ro,z
+      - extensions-catalog:/extensions:Z
+      - ./data/abbenay-secrets:/var/abbenay-secrets:rw,z
 
   install-dynamic-plugins:
     depends_on:
@@ -84,6 +87,7 @@ services:
         condition: service_healthy
     volumes:
       - ./configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,z
+      - extensions-catalog:/extensions:Z
 
   # ── APME Gateway (REST API + gRPC Reporting) ──
   # Profile "apme": skipped when APME_EXTERNAL=1.
@@ -100,6 +104,10 @@ services:
       APME_PRIMARY_ADDRESS: apme-primary:50051
       APME_DB_PATH: /data/apme.db
       APME_GATEWAY_GRPC_LISTEN: 0.0.0.0:50060
+      # Galaxy proxy listens on apme-primary's network namespace (sidecar pattern).
+      APME_GALAXY_PROXY_URL: http://apme-primary:8765
+      APME_ABBENAY_HTTP_URL: http://apme-abbenay:8787
+      APME_ABBENAY_HTTP_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
       OPENSSL_CONF: ${OPENSSL_CONF:-}
       OPENSSL_FIPS: "0"
       SSL_CERT_FILE: /etc/pki/tls/certs/ca-bundle.crt
@@ -107,6 +115,47 @@ services:
     depends_on:
       apme-primary:
         condition: service_started
+      apme-abbenay:
+        condition: service_started
+
+  # ── Abbenay (AI provider admin + gRPC for Primary) ──
+  # HTTP :8787 is reverse-proxied by the gateway for Portal Quality settings.
+  apme-abbenay:
+    profiles: ["apme"]
+    image: ghcr.io/redhat-developer/abbenay:${ABBENAY_IMAGE_TAG:-2026.4.1-alpha}
+    platform: ${APME_PLATFORM:-}
+    container_name: apme-abbenay
+    entrypoint: ["/seed/entrypoint.sh"]
+    command:
+      - web
+      - "-p"
+      - "8787"
+      - "--grpc-host"
+      - "0.0.0.0"
+      - "--grpc-port"
+      - "50057"
+    environment:
+      APME_ABBENAY_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
+      ABBENAY_API_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
+      XDG_CONFIG_HOME: /var/abbenay-config
+      XDG_RUNTIME_DIR: /tmp/abbenay-run
+    volumes:
+      # Writable runtime config (Portal HTTP admin / apme#498). Seed copied on first start.
+      - apme-abbenay-config:/var/abbenay-config:Z
+      # Provider API keys (ABBENAY_PROVIDER_*); bind mount for cross-container SELinux sharing.
+      - ./data/abbenay-secrets:/var/abbenay-secrets:rw,z
+      - ./containers/abbenay/config.yaml:/seed/config.yaml:ro,z
+      - ./containers/abbenay/entrypoint.sh:/seed/entrypoint.sh:ro,z
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://127.0.0.1:8787/ || curl -sf http://127.0.0.1:8787/ || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   # ── APME Engine (Primary orchestrator) ──
   # Validators share this container's network namespace via network_mode (sidecar pattern).
@@ -128,7 +177,12 @@ services:
       DEP_AUDIT_GRPC_ADDRESS: "127.0.0.1:50059"
       APME_GALAXY_PROXY_URL: "http://127.0.0.1:8765"
       APME_REPORTING_ENDPOINT: "apme-gateway:50060"
+      APME_ABBENAY_ADDR: apme-abbenay:50057
+      APME_ABBENAY_TOKEN: ${APME_ABBENAY_TOKEN:-apme-dev-token}
       OPENSSL_CONF: ${OPENSSL_CONF:-}
+    depends_on:
+      apme-abbenay:
+        condition: service_started
 
   # ── APME Validators (share primary's network namespace) ──
   apme-native:
@@ -237,4 +291,5 @@ services:
 volumes:
   portal-pgdata:
   apme-gateway-data:
+  apme-abbenay-config:
   apme-sessions:
