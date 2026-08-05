@@ -1,0 +1,31 @@
+# Abbenay config for automation-portal-local compose (apme-abbenay).
+# Seeded into rhdh-local/abbenay-config/config.yaml on first start (RW mount).
+#
+# API keys come from .env-abbenay (env vars). Do not put secrets in this file.
+# server.host is overridden by container args (--host 0.0.0.0) for compose DNS.
+
+server:
+  host: "0.0.0.0"
+  api_token_env: ABBENAY_API_TOKEN
+
+providers:
+  openrouter:
+    engine: openrouter
+    models:
+      anthropic/claude-sonnet-4: {}
+      anthropic/claude-opus-4.6: {}
+    api_key_env: OPENROUTER_API_KEY
+
+  # Uncomment when VERTEX_ANTHROPIC_API_KEY is set in .env-abbenay:
+  # vertex-anthropic-proxy:
+  #   engine: vertex-anthropic
+  #   base_url: "https://your-proxy.example.com:443/models"
+  #   api_key_env: "VERTEX_ANTHROPIC_API_KEY"
+  #   models:
+  #     claude-sonnet-4@20250514: {}
+
+consumers:
+  apme:
+    token_env: APME_ABBENAY_TOKEN
+    capabilities:
+      inline_policy: true

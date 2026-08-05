@@ -52,7 +52,19 @@ APME_EXTERNAL=1
 # APME_BASE_URL=http://host.containers.internal:8080   # default when external
 ```
 
-Then `make dev` (or `make start`). Compose will not start gateway/primary/validators/`apme-ui`; RHDH reaches the host Gateway via `host.containers.internal`. Use the external stack’s own UI (typically http://localhost:8081). Flip back with `APME_EXTERNAL=0` (or unset) and recreate so profile `apme` is active again.
+Then `make dev` (or `make start`). Compose will not start gateway/primary/validators/Abbenay/`apme-ui`; RHDH reaches the host Gateway via `host.containers.internal`. Use the external stack’s own UI (typically http://localhost:8081). Flip back with `APME_EXTERNAL=0` (or unset) and recreate so profile `apme` is active again.
+
+### Bundled Abbenay (AI / Tier 2)
+
+When `APME_EXTERNAL=0`, compose starts **`apme-abbenay`** alongside the gateway and engine (compose network only — no host ports for `:8787` / `:50057`).
+
+```bash
+cp .env-abbenay.example .env-abbenay   # add OPENROUTER_API_KEY (etc.)
+# optional: edit rhdh-local/abbenay-config/config.yaml after first start
+make start   # or make dev
+```
+
+Provider keys are injected via `.env-abbenay` at container start (restart Abbenay after edits). With `APME_EXTERNAL=1`, use the host APME checkout `containers/abbenay/.env` instead — portal `.env-abbenay` is unused.
 
 ## Prerequisites
 
@@ -142,9 +154,12 @@ Use this when you want pre-built plugins from a CI run — no local Node.js or b
 | `GITHUB_OAUTH_CLIENT_SECRET` | No | — | GitHub OAuth app client secret |
 | `GITLAB_TOKEN` | No | — | GitLab PAT (if using GitLab SCM) |
 | `APME_IMAGE_TAG` | No | `latest` | APME container image tag from ghcr.io |
+| `ABBENAY_IMAGE_TAG` | No | `v2026.8.1` | Abbenay image tag (bundled compose only) |
+| `APME_ABBENAY_TOKEN` | No | `apme-dev-token` | Shared token Primary/Gateway ↔ Abbenay |
+| `APME_AI_MODEL` | No | _(empty)_ | Optional default model id for Primary |
 | `APME_UI` | No | `1` (on) | Start native APME SPA (`apme-ui`) for side-by-side testing; `0`/`false`/`off` to skip; forced off when `APME_EXTERNAL=1` |
 | `APME_UI_PORT` | No | `8081` | Host port for the native APME UI |
-| `APME_EXTERNAL` | No | `0` (bundled) | `1` skips compose `apme-*` and uses `APME_BASE_URL` |
+| `APME_EXTERNAL` | No | `0` (bundled) | `1` skips compose `apme-*` (incl. Abbenay) and uses `APME_BASE_URL` |
 | `APME_BASE_URL` | No | bundled: `http://apme-gateway:8080`; external: `http://host.containers.internal:8080` | Gateway URL for RHDH / APME plugins |
 | `RHDH_IMAGE` | No | `quay.io/rhdh-community/rhdh:1.10` | RHDH base image |
 | `CUSTOMER_SUPPORT_URL` | No | Red Hat support | URL for the Support button in the global header |
@@ -256,24 +271,15 @@ Native performance. No emulation needed. This is the target platform for EAP cus
 │                         ▼                                   │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │              apme-gateway :8080                      │   │
-│  │              (REST API + gRPC Reporting)             │   │
-│  └──────────────────────┬───────────────────────────────┘   │
-│                         │                                   │
-│                         ▼                                   │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              apme-primary :50051                     │   │
-│  │              (Orchestrator)                          │   │
-│  │                                                      │   │
-│  │  Shared network namespace (sidecar pattern):         │   │
-│  │  ┌─────────┐ ┌─────┐ ┌─────────┐ ┌──────────┐       │   │
-│  │  │ native  │ │ opa │ │ ansible │ │ gitleaks │       │   │
-│  │  │ :50055  │ │:5054│ │ :50053  │ │ :50056   │       │   │
-│  │  └─────────┘ └─────┘ └─────────┘ └──────────┘       │   │
-│  │  ┌──────────────┐ ┌───────────┐ ┌──────────────┐    │   │
-│  │  │ collection-  │ │ dep-audit │ │ galaxy-proxy │    │   │
-│  │  │ health:50058 │ │ :50059    │ │ :8765        │    │   │
-│  │  └──────────────┘ └───────────┘ └──────────────┘    │   │
-│  └──────────────────────────────────────────────────────┘   │
+│  │              (REST API + ADR-070 → Abbenay HTTP)     │   │
+│  └──────────┬───────────────────────────┬───────────────┘   │
+│             │                           │                   │
+│             ▼                           ▼                   │
+│  ┌────────────────────┐    ┌────────────────────────────┐   │
+│  │ apme-primary       │    │ apme-abbenay               │   │
+│  │ :50051 (+ sidecars │───▶│ gRPC :50057 / HTTP :8787   │   │
+│  │  / galaxy-proxy)   │    │ (.env-abbenay; no hostPort)│   │
+│  └────────────────────┘    └────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -307,11 +313,13 @@ automation-portal-local/
 │   └── update-submodule.yaml       # Weekly rhdh-local submodule update
 ├── rhdh-local/                     # git submodule (redhat-developer/rhdh-local)
 ├── overlay/
-│   ├── compose.portal-apme.yaml           # Compose overlay (ghcr.io APME images)
+│   ├── compose.portal-apme.yaml           # Compose overlay (ghcr.io APME + Abbenay)
 │   ├── compose.portal-apme.dev.yaml       # Bind-mount dist-dynamic (DEV)
+│   ├── abbenay/config.yaml.example        # Seed for rhdh-local/abbenay-config/
 │   ├── app-config.portal-apme.yaml        # Portal app-config
 │   ├── dynamic-plugins.portal-apme.yaml   # Plugin manifest (tarballs)
 │   └── dynamic-plugins.portal-apme.dev.yaml
+├── .env-abbenay.example            # Abbenay provider keys template
 ├── aap-mock/                       # Local AAP Gateway/Controller/OAuth mock
 ├── local-plugins/portal-apme/      # Plugin tarballs (gitignored)
 ├── scripts/
