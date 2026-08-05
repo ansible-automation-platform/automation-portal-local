@@ -60,6 +60,9 @@ export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO SKIP_BUILD FORCE_EXPORT AAP_MO
 # ── Compose file sets ────────────────────────────────────────────────
 COMPOSE_F     := -f compose.yaml -f compose.portal.yaml
 COMPOSE_F_DEV := $(COMPOSE_F) -f compose.portal.dev.yaml
+ifneq ($(APME_EXTERNAL),1)
+  COMPOSE_F_DEV += -f compose.apme.dev.yaml
+endif
 
 # ── Plugin lists (overridable: make reload PLUGINS="backstage-apme") ─
 # Portal-only plugins (always included)
@@ -180,6 +183,7 @@ clean: ## Stop + remove volumes + clean copied overlays
 	@echo "Removing overlay files from rhdh-local…"
 	@rm -f  "$(RHDH_DIR)/compose.portal.yaml"
 	@rm -f  "$(RHDH_DIR)/compose.portal.dev.yaml"
+	@rm -f  "$(RHDH_DIR)/compose.apme.dev.yaml"
 	@rm -f  "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
 	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"
 	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
@@ -276,6 +280,11 @@ _overlays: _submodule
 _overlays-dev: _overlays
 	@cp "$(OVERLAY)/compose.portal.dev.yaml" \
 	    "$(RHDH_DIR)/compose.portal.dev.yaml"
+	@if [ "$(APME_EXTERNAL)" != "1" ] && [ -f "$(OVERLAY)/compose.apme.dev.yaml" ]; then \
+	  cp "$(OVERLAY)/compose.apme.dev.yaml" "$(RHDH_DIR)/compose.apme.dev.yaml"; \
+	else \
+	  rm -f "$(RHDH_DIR)/compose.apme.dev.yaml"; \
+	fi
 	@cp "$(OVERLAY)/dynamic-plugins.portal.dev.yaml" \
 	    "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
 

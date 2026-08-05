@@ -17,8 +17,6 @@ services:
       - ${PLUGIN_REPO}/plugins/catalog-backend-module-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-rhaap:Z
       - ${PLUGIN_REPO}/plugins/self-service/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/self-service:Z
       - ${PLUGIN_REPO}/plugins/scaffolder-backend-module-backstage-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/scaffolder-backend-module-backstage-rhaap:Z
-      - ${PLUGIN_REPO}/plugins/backstage-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/backstage-apme:Z
-      - ${PLUGIN_REPO}/plugins/catalog-backend-module-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-apme:Z
       - ./configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,Z
 
   rhdh:
@@ -28,5 +26,3 @@ services:
       - ${PLUGIN_REPO}/plugins/catalog-backend-module-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-rhaap:Z
       - ${PLUGIN_REPO}/plugins/self-service/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/self-service:Z
       - ${PLUGIN_REPO}/plugins/scaffolder-backend-module-backstage-rhaap/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/scaffolder-backend-module-backstage-rhaap:Z
-      - ${PLUGIN_REPO}/plugins/backstage-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/backstage-apme:Z
-      - ${PLUGIN_REPO}/plugins/catalog-backend-module-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-apme:Z
