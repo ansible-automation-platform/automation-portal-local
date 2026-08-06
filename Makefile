@@ -17,6 +17,7 @@ OVERLAY   := $(ROOT_DIR)/overlay
 # ── Defaults ─────────────────────────────────────────────────────────
 PLUGIN_REPO   ?= $(HOME)/github/ansible-backstage-plugins
 AAP_MOCK      ?= 1
+PORTAL_ONLY   ?= 0
 APME_EXTERNAL ?= 0
 APME_UI       ?= 1
 APME_IMAGE_TAG ?= latest
@@ -41,7 +42,11 @@ else
 endif
 
 # APME stack
-ifeq ($(APME_EXTERNAL),1)
+# PORTAL_ONLY=1 → no APME at all (IAG use case)
+# APME_EXTERNAL=1 → APME plugins load but services run elsewhere
+ifeq ($(PORTAL_ONLY),1)
+  override APME_BASE_URL :=
+else ifeq ($(APME_EXTERNAL),1)
   override APME_BASE_URL := $(if $(APME_BASE_URL),$(APME_BASE_URL),http://host.containers.internal:8080)
 else
   _UI := $(shell echo '$(APME_UI)' | tr '[:upper:]' '[:lower:]')
@@ -55,13 +60,15 @@ endif
 
 COMPOSE_PROFILES := $(shell echo '$(_PROFILES)' | tr ' ' ',')
 
-export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK
+export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK PORTAL_ONLY
 
 # ── Compose file sets ────────────────────────────────────────────────
 COMPOSE_F     := -f compose.yaml -f compose.portal.yaml
 COMPOSE_F_DEV := $(COMPOSE_F) -f compose.portal.dev.yaml
-ifneq ($(APME_EXTERNAL),1)
-  COMPOSE_F_DEV += -f compose.apme.dev.yaml
+ifneq ($(PORTAL_ONLY),1)
+  ifneq ($(APME_EXTERNAL),1)
+    COMPOSE_F_DEV += -f compose.apme.dev.yaml
+  endif
 endif
 
 # ── Plugin lists (overridable: make reload PLUGINS="backstage-apme") ─
@@ -74,7 +81,7 @@ _PORTAL_PLUGINS := auth-backend-module-rhaap-provider \
 # APME plugins (included only when APME is active)
 _APME_PLUGINS := backstage-apme catalog-backend-module-apme
 
-ifeq ($(APME_EXTERNAL),1)
+ifeq ($(PORTAL_ONLY),1)
   PLUGINS ?= $(_PORTAL_PLUGINS)
   FE_PLUGINS ?= self-service
 else
@@ -99,8 +106,9 @@ help: ## Show available targets
 	@printf '  \033[36mmake start\033[0m       Production-shaped tarball mode: \033[1mbuilds\033[0m plugins from\n'
 	@printf '                   PLUGIN_REPO, packs .tgz, then starts compose (same install path\n'
 	@printf '                   as OpenShift). Use SKIP_BUILD=1 only for pre-downloaded CI tarballs.\n\n'
-	@printf '  Both modes start APME + Almost-like-AAP mock. Set APME_EXTERNAL=1 in .env\n'
-	@printf '  to skip the compose APME stack and point at a Gateway you run separately.\n\n'
+	@printf '  Both modes start APME + Almost-like-AAP mock by default.\n'
+	@printf '  Set PORTAL_ONLY=1 for no APME (IAG delivery), or APME_EXTERNAL=1\n'
+	@printf '  to load APME plugins pointing at a Gateway you run separately.\n\n'
 	@printf '\033[1mTargets\033[0m\n\n'
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -111,7 +119,8 @@ help: ## Show available targets
 	@printf '  SKIP_BUILD=1            make start: skip rebuild, use existing .tgz\n'
 	@printf '  FORCE_EXPORT=1          Rebuild all plugins (skip incremental export)\n'
 	@printf '  DEV_PROMPT=0            Skip interactive R/F/S menu after make dev\n'
-	@printf '  APME_EXTERNAL=1         Use an already-running APME Gateway\n\n'
+	@printf '  PORTAL_ONLY=1           No APME plugins or services (IAG / portal-only)\n'
+	@printf '  APME_EXTERNAL=1         APME plugins load, services run elsewhere\n\n'
 
 dev: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _overlays _overlays-dev _env-files _sync-template _export-plugins _seed-extensions _prep-dev-root _load-images ## Start DEV mode (mount dist-dynamic into RHDH)
 	@echo "Starting services (DEV mounts)…"
@@ -280,21 +289,34 @@ _overlays: _submodule
 _overlays-dev: _overlays
 	@cp "$(OVERLAY)/compose.portal.dev.yaml" \
 	    "$(RHDH_DIR)/compose.portal.dev.yaml"
-	@if [ "$(APME_EXTERNAL)" != "1" ] && [ -f "$(OVERLAY)/compose.apme.dev.yaml" ]; then \
+	@if [ "$(PORTAL_ONLY)" != "1" ] && [ "$(APME_EXTERNAL)" != "1" ] && [ -f "$(OVERLAY)/compose.apme.dev.yaml" ]; then \
 	  cp "$(OVERLAY)/compose.apme.dev.yaml" "$(RHDH_DIR)/compose.apme.dev.yaml"; \
 	else \
 	  rm -f "$(RHDH_DIR)/compose.apme.dev.yaml"; \
 	fi
-	@cp "$(OVERLAY)/dynamic-plugins.portal.dev.yaml" \
-	    "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
+	@if [ "$(PORTAL_ONLY)" = "1" ]; then \
+	  cp "$(OVERLAY)/dynamic-plugins.portal.dev.yaml" \
+	     "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"; \
+	else \
+	  cp "$(OVERLAY)/dynamic-plugins.portal-apme.dev.yaml" \
+	     "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"; \
+	fi
 
 _overlays-tarball: _overlays
 	@rm -f "$(RHDH_DIR)/compose.portal.dev.yaml"
 	@rm -f "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
-	@cp "$(OVERLAY)/dynamic-plugins.portal.yaml" \
-	    "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"
+	@if [ "$(PORTAL_ONLY)" = "1" ]; then \
+	  cp "$(OVERLAY)/dynamic-plugins.portal.yaml" \
+	     "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"; \
+	else \
+	  cp "$(OVERLAY)/dynamic-plugins.portal-apme.yaml" \
+	     "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"; \
+	fi
 
 _sync-template:
+	@if [ "$(PORTAL_ONLY)" = "1" ]; then \
+	  echo "SKIP: APME register template (PORTAL_ONLY=1)"; exit 0; \
+	fi
 	@REPO="$(PLUGIN_REPO)"; \
 	SRC="$$REPO/plugins/backstage-apme/templates/apme-register-git-repository"; \
 	DEST="$(RHDH_DIR)/configs/catalog/apme-register-git-repository"; \
@@ -391,15 +413,15 @@ _tarballs:
 # skipping rebuilt .tgz files and you lose Overview Quality / README fixes.
 _prep-install-root:
 	@mkdir -p "$(RHDH_DIR)/dynamic-plugins-root"
-	@echo "Clearing host dynamic-plugins-root ansible/backstage installs…"
+	@echo "Clearing host dynamic-plugins-root portal plugin installs…"
 	@find "$(RHDH_DIR)/dynamic-plugins-root" -maxdepth 1 -mindepth 1 \
-	  \( -name 'ansible-*' -o -name 'backstage-*' \) -exec rm -rf {} + 2>/dev/null || true
+	  -name 'ansible-*' -exec rm -rf {} + 2>/dev/null || true
 	@touch "$(RHDH_DIR)/dynamic-plugins-root/app-config.dynamic-plugins.yaml"
 	@VOL=$$(podman volume ls -q 2>/dev/null | grep -E '(^|_)dynamic-plugins-root$$' | head -1 || true); \
 	if [ -n "$$VOL" ]; then \
-	  echo "Clearing named volume $$VOL (used by make start / tarball mode)…"; \
-	  podman run --rm -v "$$VOL:/dynamic-plugins-root:Z" alpine \
-	    sh -c 'find /dynamic-plugins-root -mindepth 1 -maxdepth 1 \( -name "ansible-*" -o -name "backstage-*" \) -exec rm -rf {} +' \
+	  echo "Clearing named volume $$VOL portal plugin installs…"; \
+	  podman run --rm -v "$$VOL:/dynamic-plugins-root" alpine \
+	    sh -c 'find /dynamic-plugins-root -mindepth 1 -maxdepth 1 -name "ansible-*" -exec rm -rf {} +' \
 	    || true; \
 	fi
 
@@ -458,7 +480,9 @@ _banner-dev:
 	@echo ""
 
 _banner-apme:
-	@if [ "$(APME_EXTERNAL)" = "1" ]; then \
+	@if [ "$(PORTAL_ONLY)" = "1" ]; then \
+	  echo "  APME:            disabled (PORTAL_ONLY=1)"; \
+	elif [ "$(APME_EXTERNAL)" = "1" ]; then \
 	  echo "  APME:            external → $(APME_BASE_URL)"; \
 	  echo "  APME UI:         use the external stack (e.g. http://localhost:8081)"; \
 	else \

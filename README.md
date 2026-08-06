@@ -31,7 +31,7 @@ tar xzf automation-portal-local-*.tar.gz && cd automation-portal-local
 # 2. Configure
 cp .env.example .env
 # Edit .env — set AAP_HOST_URL, AAP_PUBLIC_URL, AAP_TOKEN, OAUTH_CLIENT_ID,
-#              OAUTH_CLIENT_SECRET. Set AAP_MOCK=0 and APME_EXTERNAL=1.
+#              OAUTH_CLIENT_SECRET. Set AAP_MOCK=0 and PORTAL_ONLY=1.
 
 # 3. Start
 make start SKIP_BUILD=1
@@ -125,7 +125,8 @@ No local Node.js required. See [EAP Distribution](#eap-distribution).
 | `OAUTH_CLIENT_ID` | Yes | — | RHAAP OAuth client ID |
 | `OAUTH_CLIENT_SECRET` | Yes | — | RHAAP OAuth client secret |
 | `AAP_MOCK` | No | `1` (on) | `0` disables mock AAP server |
-| `APME_EXTERNAL` | No | `0` (bundled) | `1` disables APME stack |
+| `PORTAL_ONLY` | No | `0` | `1` disables APME plugins + services (IAG delivery) |
+| `APME_EXTERNAL` | No | `0` | `1` APME plugins load, services run elsewhere |
 | `PLUGIN_REPO` | Yes for `dev` | — | Path to ansible-backstage-plugins clone |
 | `RHDH_IMAGE` | No | `quay.io/rhdh-community/rhdh:1.10` | RHDH base image |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | No | `0` | Set to `0` for self-signed AAP certs (dev only) |

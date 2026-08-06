@@ -22,7 +22,7 @@ Edit `.env` with your AAP details:
 
 ```bash
 AAP_MOCK=0
-APME_EXTERNAL=1
+PORTAL_ONLY=1
 AAP_HOST_URL=https://your-aap-controller.example.com
 AAP_PUBLIC_URL=https://your-aap-controller.example.com
 AAP_TOKEN=<your-aap-token>
