@@ -1,9 +1,24 @@
 import Fastify from 'fastify';
 import formbody from '@fastify/formbody';
 import { createStore } from './store.js';
+import { createHubCache } from './hubCache.js';
+import { getRemotes } from './hubRemotes.js';
+import {
+  attachHubAuth,
+  createHubAccessTokenProvider,
+} from './hubAuth.js';
+import { registerHubRoutes } from './hubProxy.js';
 
 const env = process.env;
 const store = createStore(env);
+const hubCache = createHubCache();
+const hubTokenProvider = createHubAccessTokenProvider({
+  refreshToken: env.AAP_MOCK_HUB_TOKEN,
+  authUrl: env.AAP_MOCK_HUB_AUTH_URL,
+  clientId: env.AAP_MOCK_HUB_AUTH_CLIENT_ID,
+  log: console,
+});
+const hubRemotes = attachHubAuth(getRemotes(env), hubTokenProvider);
 const port = Number(env.PORT || 8099);
 const clientId = env.OAUTH_CLIENT_ID || 'portal-local-mock';
 const clientSecret = env.OAUTH_CLIENT_SECRET || 'portal-local-mock-secret';
@@ -470,34 +485,12 @@ app.get('/api/controller/v2/:resource/', async (req, reply) => {
   return store.page(store.filterByQuery(fn(), req), req);
 });
 
-// ── Galaxy / Hub (minimal) ────────────────────────────────────────────
-app.get('/api/galaxy/v3/plugin/ansible/search/collection-versions/', async (req, reply) => {
-  if (!store.requireAuth(req, reply)) return;
-  const results = store.collections.map(c => ({
-    collection_version: {
-      namespace: c.namespace,
-      name: c.name,
-      version: c.version,
-      description: c.description,
-    },
-    is_highest: true,
-    repository: { name: 'published' },
-  }));
-  return {
-    meta: { count: results.length },
-    links: {},
-    data: results,
-  };
-});
-
-app.get('/api/galaxy/pulp/api/v3/repositories', async (req, reply) => {
-  if (!store.requireAuth(req, reply)) return;
-  return {
-    count: 1,
-    next: null,
-    previous: null,
-    results: [{ name: 'published', pulp_href: '/pulp/api/v3/repositories/1/' }],
-  };
+// ── Galaxy / Hub (on-demand cascade + learned cache) ─────────────────
+await registerHubRoutes(app, {
+  store,
+  remotes: hubRemotes,
+  cache: hubCache,
+  env,
 });
 
 // Fallback
@@ -509,5 +502,5 @@ app.setNotFoundHandler(async (req, reply) => {
 
 await app.listen({ port, host: '0.0.0.0' });
 app.log.info(
-  `Almost like AAP listening on :${port} (login ${store.username} / ****)`,
+  `Almost like AAP listening on :${port} (login ${store.username} / ****); hub cascade certified→validated→galaxy (cache size ${hubCache.size()})`,
 );

@@ -6,7 +6,8 @@
   "description": "Stateful AAP Gateway/Controller/OAuth mock for automation-portal-local",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "node --test test/*.js"
   },
   "engines": {
     "node": ">=20"

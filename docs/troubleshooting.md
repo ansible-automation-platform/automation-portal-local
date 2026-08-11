@@ -43,20 +43,38 @@ If running on an EC2 instance, replace `localhost` with the instance's public IP
 
 ### "install-dynamic-plugins" exits with permission denied
 
-**Cause:** SELinux or rootless Podman user namespace mapping prevents the container (running as uid 1001) from writing to `dynamic-plugins-root`.
+**Cause:** On Fedora/RHEL with SELinux enforcing, bind-mounting `./dynamic-plugins-root` without `:Z` makes the directory invisible/unwritable inside the container (uid 1001). Rootless Podman user-namespace mapping can also block writes.
 
-**Fix:**
+**Fix:** Ensure `compose.portal.dev.yaml` mounts use `:Z` (portal overlay does). Then:
 ```bash
-make clean
-chmod 777 rhdh-local/dynamic-plugins-root 2>/dev/null
-make start SKIP_BUILD=1
+chmod -R a+rwX rhdh-local/dynamic-plugins-root
+# From rhdh-local, re-run installer then bring rhdh up:
+podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.dev.yaml \
+  -f compose.apme.dev.yaml run --rm --no-deps install-dynamic-plugins
+podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.dev.yaml \
+  -f compose.apme.dev.yaml up -d rhdh
 ```
+Or `make clean && make dev DEV_PROMPT=0` for a full restart.
 
 ### aap-mock container starts even with AAP_MOCK=0
 
 **Cause:** The `.env` file was not read by compose. The `make start` target copies `.env` values to `rhdh-local/.env` during setup — running compose directly bypasses this.
 
 **Fix:** Always use `make start` or `make dev`, not raw `podman compose up`.
+
+### Collections catalog empty / APME cannot download collections
+
+**Cause:** aap-mock uses **on-demand resolve + learned cache**. The catalog only lists collections that have been pulled (or searched by `namespace`+`name`). It does not index all of Galaxy.
+
+**Fix:**
+1. Trigger a download through APME (or `curl` the content API for a known collection) so the mock caches it
+2. Wait for the next `pahCollections` sync (or restart RHDH) to see it in the UI
+3. For certified/validated content, set `AAP_MOCK_HUB_TOKEN` in `.env` to your
+   console Hub **offline/refresh** token (Automation Hub → Connect). aap-mock
+   SSO-exchanges it for a Bearer access token. If Hub still 401s, check
+   `podman logs aap-mock` for `SSO token exchange failed`.
+
+See `aap-mock/README.md` for smoke curls.
 
 ### "short-name did not resolve to an alias"
 
