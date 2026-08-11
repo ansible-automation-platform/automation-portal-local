@@ -56,7 +56,7 @@ describe('hubCache', () => {
       name: 'posix',
       version: '1.0.0',
       remoteId: 'galaxy',
-      contentRepo: 'published',
+      contentRepo: 'community',
       remoteBase: 'https://galaxy.ansible.com',
       kind: 'galaxy',
     });
@@ -65,7 +65,7 @@ describe('hubCache', () => {
       name: 'posix',
       version: '1.0.0',
       remoteId: 'galaxy',
-      contentRepo: 'published',
+      contentRepo: 'community',
       remoteBase: 'https://galaxy.ansible.com',
       kind: 'galaxy',
     });
@@ -85,10 +85,16 @@ describe('hubRemotes', () => {
 
   it('reads PAH repo names from env', () => {
     assert.deepEqual(getPahRepositoryNames({}), [
-      'published',
+      'community',
       'validated',
       'rh-certified',
     ]);
+  });
+
+  it('maps galaxy remote to community PAH repo with published upstream paths', () => {
+    const galaxy = getRemotes({}).find(r => r.id === 'galaxy');
+    assert.equal(galaxy.contentRepo, 'community');
+    assert.equal(galaxy.upstreamContentRepo, 'published');
   });
 });
 
@@ -203,7 +209,7 @@ describe('resolveCollection cascade', () => {
       name: 'posix',
       version: '9.9.9',
       remoteId: 'galaxy',
-      contentRepo: 'published',
+      contentRepo: 'community',
       remoteBase: 'https://galaxy.ansible.com',
       kind: 'galaxy',
     });
@@ -249,7 +255,7 @@ describe('resolveCollection cascade', () => {
       },
       {
         id: 'galaxy',
-        contentRepo: 'published',
+        contentRepo: 'community',
         base: 'https://galaxy.ansible.com',
         kind: 'galaxy',
         token: null,

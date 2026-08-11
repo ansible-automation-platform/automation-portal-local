@@ -156,7 +156,7 @@ catalog:
           pahCollections:
             enabled: true
             repositories:
-              - name: published
+              - name: community
                 schedule:
                   frequency: { minutes: 30 }
                   timeout: { minutes: 10 }

@@ -61,7 +61,7 @@ curl -s -H "Authorization: Bearer local-mock-token" \
 curl -s -H "Authorization: Bearer local-mock-token" \
   'http://localhost:8099/api/galaxy/v3/plugin/ansible/search/collection-versions/?namespace=redhat&name=rhel_system_roles' | head
 curl -sI -H "Authorization: Token local-mock-token" \
-  'http://localhost:8099/api/galaxy/content/published/collections/index/ansible/posix/'
+  'http://localhost:8099/api/galaxy/content/community/collections/index/ansible/posix/'
 ```
 
 Portal-local wires `pahCollections` + `portal_hub_*` bootstrap to this mock.

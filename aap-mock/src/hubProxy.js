@@ -4,7 +4,7 @@
 
 import { rewritePayload, upstreamFetch } from './hubClient.js';
 import { resolveCollection } from './hubResolve.js';
-import { getPahRepositoryNames } from './hubRemotes.js';
+import { getPahRepositoryNames, upstreamContentRepo } from './hubRemotes.js';
 
 function galaxyPathFromPah(urlPath) {
   // /api/galaxy/v3/... -> /api/v3/...
@@ -20,15 +20,16 @@ function galaxyPathFromPah(urlPath) {
 }
 
 function hubPathCandidates(remote, pahContentPath) {
-  // pahContentPath like /api/galaxy/content/published/collections/...
+  // pahContentPath like /api/galaxy/content/community/collections/...
   const m = pahContentPath.match(
     /^\/api\/galaxy\/content\/[^/]+\/(.*)$/,
   );
   const rest = m ? m[1] : '';
   if (remote.kind === 'galaxy') {
+    const segment = upstreamContentRepo(remote);
     return [
-      `/api/v3/plugin/ansible/content/${remote.contentRepo}/${rest}`,
-      `/api/content/${remote.contentRepo}/${rest}`,
+      `/api/v3/plugin/ansible/content/${segment}/${rest}`,
+      `/api/content/${segment}/${rest}`,
     ];
   }
   // Console Hub: metadata may live under rh-certified/validated content roots,
@@ -175,7 +176,7 @@ export function registerHubRoutes(app, { store, remotes, cache, env }) {
           pulp_href: `/api/galaxy/pulp/api/v3/content/ansible/collection_versions/${encodeURIComponent(`${c.namespace}-${c.name}-${c.version}`)}/`,
         },
         is_highest: true,
-        repository: { name: c.contentRepo || 'published' },
+        repository: { name: c.contentRepo || 'community' },
       }));
 
       return {
@@ -289,7 +290,7 @@ export function registerHubRoutes(app, { store, remotes, cache, env }) {
       ];
     }
     return [
-      `/api/v3/plugin/ansible/content/${remote.contentRepo}/collections/artifacts/${artName}`,
+      `/api/v3/plugin/ansible/content/${upstreamContentRepo(remote)}/collections/artifacts/${artName}`,
     ];
   }
 

@@ -31,7 +31,7 @@ services:
       AAP_MOCK_HUB_AUTH_URL: ${AAP_MOCK_HUB_AUTH_URL:-https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token}
       AAP_MOCK_HUB_AUTH_CLIENT_ID: ${AAP_MOCK_HUB_AUTH_CLIENT_ID:-cloud-services}
       AAP_MOCK_GALAXY_BASE: ${AAP_MOCK_GALAXY_BASE:-https://galaxy.ansible.com}
-      AAP_MOCK_PAH_REPOS: ${AAP_MOCK_PAH_REPOS:-published,validated,rh-certified}
+      AAP_MOCK_PAH_REPOS: ${AAP_MOCK_PAH_REPOS:-community,validated,rh-certified}
     healthcheck:
       test:
         [

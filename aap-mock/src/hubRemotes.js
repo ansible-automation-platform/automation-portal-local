@@ -29,7 +29,9 @@ export function getRemotes(env = process.env) {
     },
     {
       id: 'galaxy',
-      contentRepo: 'published',
+      // PAH repo name (AAP default: community). Galaxy API paths still use published/.
+      contentRepo: 'community',
+      upstreamContentRepo: 'published',
       base: galaxyBase,
       kind: 'galaxy',
       token: null,
@@ -37,11 +39,16 @@ export function getRemotes(env = process.env) {
   ];
 }
 
+/** Upstream Galaxy/Hub API content segment (may differ from PAH repo name). */
+export function upstreamContentRepo(remote) {
+  return remote.upstreamContentRepo ?? remote.contentRepo;
+}
+
 /** PAH repo names the mock advertises for pulp validation / portal_hub bootstrap. */
 export function getPahRepositoryNames(env = process.env) {
-  const raw = (env.AAP_MOCK_PAH_REPOS || 'published,validated,rh-certified')
+  const raw = (env.AAP_MOCK_PAH_REPOS || 'community,validated,rh-certified')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
-  return raw.length ? raw : ['published'];
+  return raw.length ? raw : ['community'];
 }

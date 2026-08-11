@@ -1,3 +1,5 @@
+import { upstreamContentRepo } from './hubRemotes.js';
+
 /**
  * Upstream fetch + JSON link rewrite onto the mock host.
  */
@@ -109,13 +111,14 @@ export async function searchCollectionOnRemote(remote, namespace, name, version)
     params.set('is_highest', 'true');
   }
 
+  const upstreamRepo = upstreamContentRepo(remote);
   const candidates =
     remote.kind === 'galaxy'
       ? [`/api/v3/plugin/ansible/search/collection-versions/?${params}`]
       : [
           `/v3/plugin/ansible/search/collection-versions/?${params}`,
           `/api/v3/plugin/ansible/search/collection-versions/?${params}`,
-          `/content/${remote.contentRepo}/v3/plugin/ansible/search/collection-versions/?${params}`,
+          `/content/${upstreamRepo}/v3/plugin/ansible/search/collection-versions/?${params}`,
         ];
 
   for (const path of candidates) {
