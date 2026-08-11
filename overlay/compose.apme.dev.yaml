@@ -1,0 +1,13 @@
+# APME DEV overlay — bind-mount APME plugin dist-dynamic
+# Only included when APME is active (APME_EXTERNAL=0)
+
+services:
+  install-dynamic-plugins:
+    volumes:
+      - ${PLUGIN_REPO}/plugins/backstage-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/backstage-apme:Z
+      - ${PLUGIN_REPO}/plugins/catalog-backend-module-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-apme:Z
+
+  rhdh:
+    volumes:
+      - ${PLUGIN_REPO}/plugins/backstage-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/backstage-apme:Z
+      - ${PLUGIN_REPO}/plugins/catalog-backend-module-apme/dist-dynamic:/opt/app-root/src/local-plugins/portal-dev/catalog-backend-module-apme:Z

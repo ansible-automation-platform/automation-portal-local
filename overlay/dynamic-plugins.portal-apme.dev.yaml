@@ -1,7 +1,7 @@
-# Portal + APME Dynamic Plugins — DEV (live dist-dynamic via local-plugins mounts)
+# Portal + APME Dynamic Plugins — DEV (APME enabled, live dist-dynamic via local-plugins mounts)
 #
 # package paths point at bind-mounted dist-dynamic trees under
-# local-plugins/portal-apme-dev/ (see compose.portal-apme.dev.yaml).
+# local-plugins/portal-dev/ (see compose.portal.dev.yaml).
 # No .tgz / OCI packaging.
 #
 # ./scripts/start-dev.sh → ./scripts/reload-dev.sh
@@ -13,17 +13,17 @@ plugins:
   - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
     disabled: false
 
-  - package: ./local-plugins/portal-apme-dev/scaffolder-backend-module-backstage-rhaap
+  - package: ./local-plugins/portal-dev/scaffolder-backend-module-backstage-rhaap
     disabled: false
     pluginConfig:
       dynamicPlugins:
         backend:
           ansible.plugin-scaffolder-backend-module-backstage-rhaap:
 
-  - package: ./local-plugins/portal-apme-dev/catalog-backend-module-rhaap
+  - package: ./local-plugins/portal-dev/catalog-backend-module-rhaap
     disabled: false
 
-  - package: ./local-plugins/portal-apme-dev/self-service
+  - package: ./local-plugins/portal-dev/self-service
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -92,7 +92,7 @@ plugins:
                 config:
                   priority: 100
 
-  - package: ./local-plugins/portal-apme-dev/auth-backend-module-rhaap-provider
+  - package: ./local-plugins/portal-dev/auth-backend-module-rhaap-provider
     disabled: false
     pluginConfig: {}
 
@@ -110,7 +110,8 @@ plugins:
   - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-gitlab-dynamic
     disabled: false
 
-  - package: ./local-plugins/portal-apme-dev/backstage-apme
+  # APME frontend
+  - package: ./local-plugins/portal-dev/backstage-apme
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -130,7 +131,8 @@ plugins:
                   layout:
                     gridColumn: '1 / -1'
 
-  - package: ./local-plugins/portal-apme-dev/catalog-backend-module-apme
+  # APME backend
+  - package: ./local-plugins/portal-dev/catalog-backend-module-apme
     disabled: false
     pluginConfig:
       dynamicPlugins:

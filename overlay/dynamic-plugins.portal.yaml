@@ -1,5 +1,5 @@
-# Portal + APME Dynamic Plugins (APME enabled)
-# Used when PORTAL_ONLY!=1 (full stack or APME_EXTERNAL).
+# Portal + APME Dynamic Plugins
+# Matches the ansible-portal-chart helm values.yaml plugin list.
 # Plugin tarballs are loaded from local-plugins/portal/*.tgz
 
 includes:
@@ -133,9 +133,9 @@ plugins:
   # Host contract MUST stay in parity with dynamic-plugins.portal.dev.yaml
   # (apiFactories / entityTabs / mountPoints). See AGENTS.md + make check-plugin-parity.
 
-  # APME frontend UI
+  # APME frontend UI — set disabled: false when APME tarballs are present
   - package: ./local-plugins/portal/ansible-plugin-backstage-apme-dynamic-0.1.0-dev.1fdc1902.tgz
-    disabled: false
+    disabled: true
     pluginConfig:
       dynamicPlugins:
         frontend:
@@ -154,9 +154,9 @@ plugins:
                   layout:
                     gridColumn: '1 / -1'
 
-  # APME catalog backend module
+  # APME catalog backend module — set disabled: false when APME tarballs are present
   - package: ./local-plugins/portal/ansible-backstage-plugin-catalog-backend-module-apme-dynamic-0.1.0.tgz
-    disabled: false
+    disabled: true
     pluginConfig:
       dynamicPlugins:
         backend:

@@ -113,7 +113,10 @@ catalog:
   providers:
     rhaap:
       development:
-        orgs: Default
+        multiOrgEnabled: true
+        orgs:
+          - Default
+          - Engineering
         sync:
           ansibleGitContents:
             enabled: true
@@ -170,6 +173,8 @@ dynamicPlugins:
           priority: 80
           title: ''
           to: catalog
+        default.help:
+          enabled: false
         default.create:
           icon: add
           priority: 40

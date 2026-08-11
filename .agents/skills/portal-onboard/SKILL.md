@@ -62,7 +62,7 @@ Note where they cloned it — this path becomes `PLUGIN_REPO` in the next step.
 
 ### If they chose B with CI/EAP artifacts only (no source)
 
-They need `.tgz` plugin tarballs already in `local-plugins/portal-apme/` from:
+They need `.tgz` plugin tarballs already in `local-plugins/portal/` from:
 
 - CI artifacts from the ansible-rhdh-plugins early-access workflow
 - A pre-built EAP tar distribution
@@ -122,7 +122,7 @@ directly from another terminal.
 
 ```bash
 make start                          # export + pack from PLUGIN_REPO, then up
-make start SKIP_BUILD=1             # reuse existing local-plugins/portal-apme/*.tgz
+make start SKIP_BUILD=1             # reuse existing local-plugins/portal/*.tgz
 # Same URLs as above
 ```
 

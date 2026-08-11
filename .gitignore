@@ -6,20 +6,20 @@
 .env.platform
 
 # Plugin tarballs (built or downloaded, not committed)
-local-plugins/portal-apme/*.tgz
+local-plugins/portal/*.tgz
 
 # OCI image archives (only present in distributable tar)
 images/
 
 # Files copied into rhdh-local by Make / scripts (ephemeral)
-rhdh-local/compose.portal-apme.yaml
-rhdh-local/compose.portal-apme.dev.yaml
-rhdh-local/configs/app-config/app-config.portal-apme.yaml
-rhdh-local/configs/dynamic-plugins/dynamic-plugins.portal-apme.yaml
-rhdh-local/configs/dynamic-plugins/dynamic-plugins.portal-apme.dev.yaml
+rhdh-local/compose.portal.yaml
+rhdh-local/compose.portal.dev.yaml
+rhdh-local/configs/app-config/app-config.portal.yaml
+rhdh-local/configs/dynamic-plugins/dynamic-plugins.portal.yaml
+rhdh-local/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml
 rhdh-local/configs/catalog/apme-register-git-repository/
-rhdh-local/local-plugins/portal-apme/
-rhdh-local/local-plugins/portal-apme-dev/
+rhdh-local/local-plugins/portal/
+rhdh-local/local-plugins/portal-dev/
 rhdh-local/dynamic-plugins-root/
 rhdh-local/.env
 rhdh-local/.env-abbenay
