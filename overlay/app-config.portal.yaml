@@ -1,7 +1,7 @@
 ansible:
   apme:
-    # Bundled compose: http://apme-gateway:8080 (default APME_BASE_URL).
-    # External APME: set APME_EXTERNAL=1 → default http://host.containers.internal:8080
+    # Host APME Gateway from `make apme` (tox -e up). Default when PORTAL_ONLY!=1:
+    # http://host.containers.internal:8080
     baseUrl: ${APME_BASE_URL}
     checkSSL: false
     enabled: true

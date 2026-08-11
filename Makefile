@@ -1,6 +1,7 @@
 # Automation Portal Local — Makefile
 #
-# Primary interface for managing the local Portal + APME compose stack.
+# Primary interface for the local Portal compose stack.
+# APME runs via `make apme` (tox -e up in APME_REPO), not in compose.
 # Run `make help` to see available targets.
 
 .DEFAULT_GOAL := help
@@ -16,11 +17,9 @@ OVERLAY   := $(ROOT_DIR)/overlay
 
 # ── Defaults ─────────────────────────────────────────────────────────
 PLUGIN_REPO   ?= $(HOME)/github/ansible-backstage-plugins
+APME_REPO     ?= $(HOME)/github/apme
 AAP_MOCK      ?= 1
 PORTAL_ONLY   ?= 0
-APME_EXTERNAL ?= 0
-APME_UI       ?= 1
-APME_IMAGE_TAG ?= latest
 APME_BASE_URL ?=
 # Set SKIP_BUILD=1 to use existing local-plugins/portal/*.tgz (CI artifacts).
 SKIP_BUILD    ?= 0
@@ -30,7 +29,7 @@ FORCE_EXPORT  ?= 0
 DEV_PROMPT    ?= 1
 
 # ── Compose-profile resolution ──────────────────────────────────────
-# Profiles: mock (aap-mock), apme (APME stack), apme-ui (native SPA)
+# Profiles: mock (aap-mock). APME is external (make apme → tox -e up).
 _PROFILES :=
 
 # AAP mock server: enabled by default, disabled with AAP_MOCK=0
@@ -41,34 +40,31 @@ else
   _PROFILES += mock
 endif
 
-# APME stack
-# PORTAL_ONLY=1 → no APME at all (IAG use case)
-# APME_EXTERNAL=1 → APME plugins load but services run elsewhere
-ifeq ($(PORTAL_ONLY),1)
-  override APME_BASE_URL :=
-else ifeq ($(APME_EXTERNAL),1)
-  override APME_BASE_URL := $(if $(APME_BASE_URL),$(APME_BASE_URL),http://host.containers.internal:8080)
-else
-  _UI := $(shell echo '$(APME_UI)' | tr '[:upper:]' '[:lower:]')
-  ifneq ($(filter 0 false no off,$(_UI)),)
-    _PROFILES += apme
+# APME Gateway URL (plugins still load unless PORTAL_ONLY=1)
+_PORTAL_ONLY := $(shell echo '$(PORTAL_ONLY)' | tr '[:upper:]' '[:lower:]')
+ifeq ($(filter 1 true yes on,$(_PORTAL_ONLY)),)
+  # APME plugins enabled — rewrite removed compose hostname if present in .env
+  _APME_URL_RAW := $(if $(APME_BASE_URL),$(APME_BASE_URL),http://host.containers.internal:8080)
+  ifneq ($(findstring apme-gateway,$(_APME_URL_RAW)),)
+    override APME_BASE_URL := http://host.containers.internal:8080
   else
-    _PROFILES += apme apme-ui
+    override APME_BASE_URL := $(_APME_URL_RAW)
   endif
-  override APME_BASE_URL := $(if $(APME_BASE_URL),$(APME_BASE_URL),http://apme-gateway:8080)
+else
+  override APME_BASE_URL :=
+  # Normalize so recipe checks can use PORTAL_ONLY=1
+  override PORTAL_ONLY := 1
 endif
 
 COMPOSE_PROFILES := $(shell echo '$(_PROFILES)' | tr ' ' ',')
 
-export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK PORTAL_ONLY
+export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO APME_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK PORTAL_ONLY
 
 # ── Compose file sets ────────────────────────────────────────────────
 COMPOSE_F     := -f compose.yaml -f compose.portal.yaml
 COMPOSE_F_DEV := $(COMPOSE_F) -f compose.portal.dev.yaml
 ifneq ($(PORTAL_ONLY),1)
-  ifneq ($(APME_EXTERNAL),1)
-    COMPOSE_F_DEV += -f compose.apme.dev.yaml
-  endif
+  COMPOSE_F_DEV += -f compose.apme.dev.yaml
 endif
 
 # ── Plugin lists (overridable: make reload PLUGINS="backstage-apme") ─
@@ -93,7 +89,7 @@ endif
 #  User-facing targets
 # =====================================================================
 .PHONY: help dev start stop restart reload reload-fe dev-prompt export-plugins \
-        build-plugins clean logs status check-plugin-parity
+        build-plugins clean logs status check-plugin-parity apme apme-down
 
 help: ## Show available targets
 	@printf '\n\033[1mAutomation Portal Local\033[0m\n'
@@ -106,23 +102,42 @@ help: ## Show available targets
 	@printf '  \033[36mmake start\033[0m       Production-shaped tarball mode: \033[1mbuilds\033[0m plugins from\n'
 	@printf '                   PLUGIN_REPO, packs .tgz, then starts compose (same install path\n'
 	@printf '                   as OpenShift). Use SKIP_BUILD=1 only for pre-downloaded CI tarballs.\n\n'
-	@printf '  Both modes start APME + Almost-like-AAP mock by default.\n'
-	@printf '  Set PORTAL_ONLY=1 for no APME (IAG delivery), or APME_EXTERNAL=1\n'
-	@printf '  to load APME plugins pointing at a Gateway you run separately.\n\n'
+	@printf '  Both modes start the Almost-like-AAP mock by default and ensure APME is\n'
+	@printf '  up via \033[36mmake apme\033[0m (\033[1mtox -e up\033[0m in APME_REPO). Set PORTAL_ONLY=1 for no APME.\n\n'
 	@printf '\033[1mTargets\033[0m\n\n'
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@printf '\n\033[1mOverrides\033[0m\n\n'
 	@printf '  PLUGIN_REPO=<path>      Path to ansible-backstage-plugins clone\n'
+	@printf '  APME_REPO=<path>        Path to apme clone (for make apme)\n'
 	@printf '  PLUGINS="name …"        Limit export/reload/build to specific plugins\n'
 	@printf '  FE_PLUGINS="name …"     Limit reload-fe to specific frontend plugins\n'
 	@printf '  SKIP_BUILD=1            make start: skip rebuild, use existing .tgz\n'
 	@printf '  FORCE_EXPORT=1          Rebuild all plugins (skip incremental export)\n'
 	@printf '  DEV_PROMPT=0            Skip interactive R/F/S menu after make dev\n'
-	@printf '  PORTAL_ONLY=1           No APME plugins or services (IAG / portal-only)\n'
-	@printf '  APME_EXTERNAL=1         APME plugins load, services run elsewhere\n\n'
+	@printf '  PORTAL_ONLY=1           No APME plugins; skip make apme (IAG / portal-only)\n\n'
 
-dev: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _overlays _overlays-dev _env-files _sync-template _export-plugins _seed-extensions _prep-dev-root _load-images ## Start DEV mode (mount dist-dynamic into RHDH)
+apme: ## Start APME (cd APME_REPO && tox -e up)
+	@[ -d "$(APME_REPO)" ] || { \
+	  echo "ERROR: APME_REPO not found: $(APME_REPO)"; \
+	  echo "Clone apme and set APME_REPO in .env (default: \$$HOME/github/apme)."; \
+	  exit 1; }
+	@command -v tox >/dev/null || { \
+	  echo "ERROR: tox is required to start APME."; \
+	  echo "  uv tool install tox --with tox-uv"; \
+	  exit 1; }
+	@echo "Starting APME via tox -e up in $(APME_REPO)…"
+	@cd "$(APME_REPO)" && tox -e up
+
+apme-down: ## Stop APME (cd APME_REPO && tox -e down)
+	@[ -d "$(APME_REPO)" ] || { \
+	  echo "ERROR: APME_REPO not found: $(APME_REPO)"; exit 1; }
+	@command -v tox >/dev/null || { \
+	  echo "ERROR: tox is required to stop APME."; exit 1; }
+	@echo "Stopping APME via tox -e down in $(APME_REPO)…"
+	@cd "$(APME_REPO)" && tox -e down
+
+dev: check-plugin-parity _check-env _prereqs _stop-if-running _remove-legacy-apme _ensure-apme _submodule _overlays _overlays-dev _env-files _sync-template _export-plugins _seed-extensions _prep-dev-root _load-images ## Start DEV mode (mount dist-dynamic into RHDH)
 	@echo "Starting services (DEV mounts)…"
 	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F_DEV) up -d
 	@$(MAKE) --no-print-directory _banner-dev
@@ -131,7 +146,7 @@ dev: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _overla
 dev-prompt: ## Re-enter the interactive DEV menu (R/F/S) without restarting compose
 	@DEV_PROMPT=1 "$(ROOT_DIR)/scripts/dev-prompt.sh"
 
-start: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _prep-install-root _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
+start: check-plugin-parity _check-env _prereqs _stop-if-running _remove-legacy-apme _ensure-apme _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _prep-install-root _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
 	@echo "Starting services…"
 	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F) up -d
 	@$(MAKE) --no-print-directory _banner
@@ -139,7 +154,7 @@ start: check-plugin-parity _check-env _prereqs _stop-if-running _submodule _mayb
 check-plugin-parity: ## Fail if DEV vs tarball dynamic-plugins host contracts drift
 	@python3 "$(ROOT_DIR)/scripts/check-plugin-config-parity.py"
 
-stop: ## Stop all services (auto-detects mode)
+stop: ## Stop Portal compose services (APME keeps running — use make apme-down)
 	@if [ ! -f "$(RHDH_DIR)/compose.portal.yaml" ]; then \
 	  echo "Portal does not appear to be running."; exit 0; \
 	fi
@@ -150,7 +165,7 @@ stop: ## Stop all services (auto-detects mode)
 	  else \
 	    podman compose $(COMPOSE_F) down; \
 	  fi
-	@echo "All services stopped."
+	@echo "Portal services stopped. APME (if running): make apme-down"
 
 restart: stop dev ## Restart DEV mode (stop + dev)
 
@@ -198,22 +213,12 @@ clean: ## Stop + remove volumes + clean copied overlays
 	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
 	@rm -rf "$(RHDH_DIR)/configs/catalog/apme-register-git-repository"
 	@rm -f  "$(RHDH_DIR)/.env"
-	@rm -f  "$(RHDH_DIR)/.env-abbenay"
-	@rm -rf "$(RHDH_DIR)/abbenay-config"
 	@rm -f  "$(RHDH_DIR)/.portal-compose-mode"
 	@rm -rf "$(RHDH_DIR)/local-plugins/portal"
 	@rm -rf "$(RHDH_DIR)/local-plugins/portal-dev"
 	@rm -rf "$(RHDH_DIR)/dynamic-plugins-root"
 	@rm -f  "$(ROOT_DIR)/.env.platform"
-	@echo "Cleanup complete."
-
-clean-images: clean ## clean + remove APME container images
-	@echo "Removing APME container images…"
-	@for svc in gateway primary native opa ansible gitleaks collection-health dep-audit galaxy-proxy ui; do \
-	  podman rmi "ghcr.io/ansible/apme-$$svc:$(APME_IMAGE_TAG)" 2>/dev/null || true; \
-	done
-	@podman rmi "postgres:16-alpine" 2>/dev/null || true
-	@echo "APME images removed."
+	@echo "Cleanup complete. APME (if running): make apme-down"
 
 logs: ## Follow compose logs (all services)
 	@cd $(RHDH_DIR) && \
@@ -231,8 +236,8 @@ status: ## Show running containers
 # =====================================================================
 #  Internal targets (prefixed with _)
 # =====================================================================
-.PHONY: _check-env _prereqs _stop-if-running _submodule _overlays _overlays-dev \
-        _overlays-tarball _env-files _export-plugins _seed-extensions \
+.PHONY: _check-env _prereqs _ensure-apme _remove-legacy-apme _stop-if-running _submodule \
+        _overlays _overlays-dev _overlays-tarball _env-files _export-plugins _seed-extensions \
         _load-images _tarballs _sync-template _prep-dev-root _prep-install-root \
         _build-tarballs _maybe-build-tarballs \
         _banner _banner-dev _banner-apme
@@ -242,10 +247,65 @@ _check-env:
 	  echo "ERROR: .env not found."; \
 	  echo "  cp .env.example .env"; \
 	  exit 1; }
+	@if grep -qE '^APME_EXTERNAL=|^APME_UI=|^APME_IMAGE_TAG=' "$(ROOT_DIR)/.env" 2>/dev/null; then \
+	  echo "NOTE: APME_EXTERNAL / APME_UI / APME_IMAGE_TAG in .env are ignored."; \
+	  echo "  APME runs via make apme (tox -e up). Remove those keys when convenient."; \
+	fi
+	@if grep -qE '^APME_BASE_URL=.*apme-gateway' "$(ROOT_DIR)/.env" 2>/dev/null; then \
+	  echo "WARNING: APME_BASE_URL still points at compose hostname apme-gateway." >&2; \
+	  echo "  Unset it (default: http://host.containers.internal:8080) or set a host Gateway URL." >&2; \
+	fi
+	@if [ -f "$(ROOT_DIR)/.env-abbenay" ]; then \
+	  echo "NOTE: .env-abbenay is unused. Put Abbenay keys in APME_REPO/containers/abbenay/.env"; \
+	fi
 
 _prereqs:
 	@command -v podman >/dev/null || { echo "ERROR: podman is required."; exit 1; }
 	@command -v git    >/dev/null || { echo "ERROR: git is required."; exit 1; }
+
+# Remove pre-unbundle compose APME containers (exact names). Does not touch apme-pod-*.
+_remove-legacy-apme:
+	@removed=0; \
+	for c in apme-gateway apme-primary apme-abbenay apme-native apme-opa apme-ansible \
+	  apme-gitleaks apme-collection-health apme-dep-audit apme-galaxy-proxy apme-ui; do \
+	  if podman container exists "$$c" 2>/dev/null; then \
+	    echo "Removing legacy compose APME container: $$c"; \
+	    podman rm -f "$$c" >/dev/null 2>&1 || true; \
+	    removed=1; \
+	  fi; \
+	done; \
+	if [ "$$removed" = "1" ]; then \
+	  echo "Legacy compose APME containers removed. Gateway now comes from: make apme"; \
+	fi
+
+# When APME plugins are enabled, ensure Gateway is reachable; otherwise run make apme
+# for the default host URL only. Custom APME_BASE_URL → warn, do not tox-start.
+_ensure-apme:
+	@if [ "$(PORTAL_ONLY)" = "1" ]; then \
+	  echo "PORTAL_ONLY=1 — skipping APME"; \
+	else \
+	  command -v curl >/dev/null || { \
+	    echo "ERROR: curl is required to probe the APME Gateway (or set PORTAL_ONLY=1)."; \
+	    exit 1; }; \
+	  URL="$(APME_BASE_URL)"; \
+	  DEFAULT_URL="http://host.containers.internal:8080"; \
+	  case "$$URL" in \
+	    *apme-gateway*) \
+	      echo "WARNING: APME_BASE_URL uses removed compose hostname apme-gateway — using $$DEFAULT_URL" >&2; \
+	      URL="$$DEFAULT_URL"; \
+	      ;; \
+	  esac; \
+	  PROBE=$$(printf '%s' "$$URL" | sed 's/host\.containers\.internal/127.0.0.1/g'); \
+	  if curl -sf --connect-timeout 2 --max-time 3 "$${PROBE%/}/docs" >/dev/null 2>&1; then \
+	    echo "APME Gateway already up at $${PROBE}"; \
+	  elif [ "$$URL" = "$$DEFAULT_URL" ] || [ "$$URL" = "http://127.0.0.1:8080" ] || [ "$$URL" = "http://localhost:8080" ]; then \
+	    echo "APME Gateway not reachable at $${PROBE} — starting via make apme…"; \
+	    $(MAKE) --no-print-directory apme; \
+	  else \
+	    echo "WARNING: APME Gateway at $${PROBE} did not respond." >&2; \
+	    echo "  Start it yourself (make apme, or your remote Gateway), or unset APME_BASE_URL." >&2; \
+	  fi; \
+	fi
 
 _stop-if-running:
 	@if [ -f "$(RHDH_DIR)/compose.portal.yaml" ]; then \
@@ -274,22 +334,16 @@ _overlays: _submodule
 	  "$(RHDH_DIR)/configs/dynamic-plugins" \
 	  "$(RHDH_DIR)/configs/catalog" \
 	  "$(RHDH_DIR)/local-plugins/portal" \
-	  "$(RHDH_DIR)/local-plugins/portal-dev" \
-	  "$(RHDH_DIR)/abbenay-config"
+	  "$(RHDH_DIR)/local-plugins/portal-dev"
 	@cp "$(OVERLAY)/app-config.portal.yaml" \
 	    "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
 	@cp "$(OVERLAY)/compose.portal.yaml" \
 	    "$(RHDH_DIR)/compose.portal.yaml"
-	@if [ ! -f "$(RHDH_DIR)/abbenay-config/config.yaml" ]; then \
-	  cp "$(OVERLAY)/abbenay/config.yaml.example" \
-	     "$(RHDH_DIR)/abbenay-config/config.yaml"; \
-	  echo "Seeded rhdh-local/abbenay-config/config.yaml from overlay example"; \
-	fi
 
 _overlays-dev: _overlays
 	@cp "$(OVERLAY)/compose.portal.dev.yaml" \
 	    "$(RHDH_DIR)/compose.portal.dev.yaml"
-	@if [ "$(PORTAL_ONLY)" != "1" ] && [ "$(APME_EXTERNAL)" != "1" ] && [ -f "$(OVERLAY)/compose.apme.dev.yaml" ]; then \
+	@if [ "$(PORTAL_ONLY)" != "1" ] && [ -f "$(OVERLAY)/compose.apme.dev.yaml" ]; then \
 	  cp "$(OVERLAY)/compose.apme.dev.yaml" "$(RHDH_DIR)/compose.apme.dev.yaml"; \
 	else \
 	  rm -f "$(RHDH_DIR)/compose.apme.dev.yaml"; \
@@ -332,8 +386,8 @@ _sync-template:
 _env-files:
 	@ARCH=$$(uname -m); \
 	if [ "$$ARCH" = "arm64" ] || [ "$$ARCH" = "aarch64" ]; then \
-	  printf 'APME_PLATFORM=linux/amd64\nOPENSSL_CONF=/dev/null\n' > "$(ROOT_DIR)/.env.platform"; \
-	  echo "Detected ARM host — APME containers will use amd64 emulation"; \
+	  printf 'OPENSSL_CONF=/dev/null\n' > "$(ROOT_DIR)/.env.platform"; \
+	  echo "Detected ARM host — set OPENSSL_CONF=/dev/null for portal containers"; \
 	else \
 	  : > "$(ROOT_DIR)/.env.platform"; \
 	fi; \
@@ -347,24 +401,6 @@ _env-files:
 	  mv "$(RHDH_DIR)/.env.tmp" "$(RHDH_DIR)/.env"; \
 	  echo "$$pair" >> "$(RHDH_DIR)/.env"; \
 	done
-	@# Abbenay env_file (required by compose even when empty / APME_EXTERNAL=1)
-	@if [ -f "$(ROOT_DIR)/.env-abbenay" ]; then \
-	  cp "$(ROOT_DIR)/.env-abbenay" "$(RHDH_DIR)/.env-abbenay"; \
-	elif [ -f "$(ROOT_DIR)/.env-abbenay.example" ]; then \
-	  cp "$(ROOT_DIR)/.env-abbenay.example" "$(RHDH_DIR)/.env-abbenay"; \
-	  echo "NOTE: Using .env-abbenay.example (no secrets). For AI keys: cp .env-abbenay.example .env-abbenay"; \
-	else \
-	  printf 'APME_ABBENAY_TOKEN=apme-dev-token\n' > "$(RHDH_DIR)/.env-abbenay"; \
-	fi
-	@if [ "$(APME_EXTERNAL)" = "1" ]; then \
-	  URL="$(APME_BASE_URL)"; \
-	  PROBE="$${URL//host.containers.internal/127.0.0.1}"; \
-	  if ! curl -sf --connect-timeout 2 --max-time 3 "$${PROBE%/}/docs" >/dev/null 2>&1 \
-	    && ! curl -sf --connect-timeout 2 --max-time 3 "$${PROBE%/}/" >/dev/null 2>&1; then \
-	    echo "WARNING: APME_EXTERNAL=1 but Gateway at $${PROBE} did not respond." >&2; \
-	    echo "  Start APME first (e.g. cd apme && tox -e up), or set APME_BASE_URL." >&2; \
-	  fi; \
-	fi
 
 _build-tarballs: _export-plugins
 	@command -v npm >/dev/null || { echo "ERROR: npm required to pack plugin tarballs"; exit 1; }
@@ -482,13 +518,8 @@ _banner-dev:
 _banner-apme:
 	@if [ "$(PORTAL_ONLY)" = "1" ]; then \
 	  echo "  APME:            disabled (PORTAL_ONLY=1)"; \
-	elif [ "$(APME_EXTERNAL)" = "1" ]; then \
-	  echo "  APME:            external → $(APME_BASE_URL)"; \
-	  echo "  APME UI:         use the external stack (e.g. http://localhost:8081)"; \
 	else \
-	  echo "  APME Gateway:    http://localhost:8080"; \
-	  UI="$$(echo '$(APME_UI)' | tr '[:upper:]' '[:lower:]')"; \
-	  case "$$UI" in 0|false|no|off) ;; *) \
-	    echo "  APME UI:         http://localhost:$${APME_UI_PORT:-8081}" ;; \
-	  esac; \
+	  echo "  APME Gateway:    http://localhost:8080  (make apme → tox -e up)"; \
+	  echo "  APME UI:         http://localhost:8081  (from APME pod)"; \
+	  echo "  RHDH→APME URL:   $(APME_BASE_URL)"; \
 	fi

@@ -8,7 +8,7 @@ command -v podman >/dev/null 2>&1 || { echo "ERROR: podman is required."; exit 1
 if [ ! -f "$ROOT_DIR/.env" ]; then
   echo "ERROR: .env not found."
   echo "  cp .env.example .env"
-  echo "  # Fill in AAP_HOST_URL, AAP_TOKEN, OAUTH credentials"
+  echo "  # Fill in AAP_HOST_URL, AAP_TOKEN, OAuth credentials"
   exit 1
 fi
 
@@ -27,5 +27,4 @@ podman compose -f compose.yaml -f compose.portal.yaml up -d
 
 echo ""
 echo "Portal is starting at http://localhost:7007"
-echo "APME Gateway at http://localhost:8080"
 echo "Stop: ./scripts/stop.sh"

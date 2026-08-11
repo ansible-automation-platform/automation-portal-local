@@ -1,5 +1,6 @@
-# APME DEV overlay — bind-mount APME plugin dist-dynamic
-# Only included when APME is active (APME_EXTERNAL=0)
+# APME plugin DEV mounts — bind-mount APME plugin dist-dynamic
+# Included when PORTAL_ONLY!=1 (APME plugins enabled). Gateway itself is
+# started separately via `make apme` (tox -e up in APME_REPO).
 
 services:
   install-dynamic-plugins:

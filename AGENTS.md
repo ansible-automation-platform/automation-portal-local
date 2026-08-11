@@ -54,6 +54,7 @@ CI runs this on every PR. Do not weaken the check to silence a failure — fix t
 - **Plugin feature work (fast loop)** → `make dev`, then use the interactive menu: **R** reload, **F** frontend, **S** stop (`make reload` / `make reload-fe` still work)
 - **Production-shaped / tarball mode** → `make start` (exports + packs from `PLUGIN_REPO`, then compose up)
 - **Pre-downloaded CI tarballs only** → `make start SKIP_BUILD=1`
+- **APME Gateway** → not in compose; `make apme` runs `tox -e up` in `APME_REPO` (default `~/github/apme`). `make dev` / `make start` auto-start it when down; `PORTAL_ONLY=1` skips APME plugins and that step
 - Exports are **incremental**: plugins with up-to-date `dist-dynamic` are skipped. Force everything with `FORCE_EXPORT=1`. Prefer `make reload PLUGINS=backstage-apme` or `make reload-fe` for UI-only work.
 - Do not tell users to ignore `make start` when a story changes host registration — fix the overlay instead
 - Never recommend `BUILD_TYPE=portal ./build.sh` against a developer clone — it deletes `plugins/backstage-rhaap`. Use `make build-plugins` / `make start` (export + pack) instead.
@@ -61,4 +62,5 @@ CI runs this on every PR. Do not weaken the check to silence a failure — fix t
 ## Related repos
 
 - Plugin source: `ansible-backstage-plugins` (`plugins/backstage-apme`, `plugins/self-service`, …)
+- APME engine: `apme` — local pod via `make apme` (`tox -e up`); Abbenay keys in `APME_REPO/containers/abbenay/.env`
 - When self-service gains a required `useApi(…ApiRef)`, the providing plugin’s factory **must** appear in both Portal overlays above

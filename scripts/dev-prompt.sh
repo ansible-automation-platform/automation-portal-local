@@ -2,7 +2,7 @@
 # Interactive DEV loop after `make dev`.
 #   R — make reload      (re-export changed plugins + reinstall + restart rhdh)
 #   F — make reload-fe   (FE export only; browser refresh)
-#   S — make stop        (tear down stack and exit)
+#   S — make stop        (stop Portal compose; APME keeps running)
 #   Q — quit this menu   (leave stack running)
 #
 # Skipped when stdin is not a TTY, or DEV_PROMPT=0.
