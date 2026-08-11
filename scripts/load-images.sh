@@ -5,11 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 IMAGES_DIR="$ROOT_DIR/images"
 
-echo "=== Loading APME Container Images ==="
+echo "=== Loading Container Images ==="
 
 if [ ! -d "$IMAGES_DIR" ]; then
   echo "No images/ directory found. Skipping image load."
-  echo "Images will be pulled from ghcr.io/ansible when compose starts."
   exit 0
 fi
 

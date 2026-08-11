@@ -106,6 +106,18 @@ Failed to authenticate WebSocket connection: AuthenticationError: Failed user to
 
 ## Network / Firewall
 
+### APME Quality features fail / Gateway unreachable
+
+**Cause:** Portal expects APME at `APME_BASE_URL` (default `http://host.containers.internal:8080`). The Gateway is not running.
+
+**Fix:**
+```bash
+make apme          # cd APME_REPO && tox -e up
+# or ensure APME_REPO points at your apme clone
+```
+
+`make dev` / `make start` call this automatically when the Gateway does not respond. Abbenay / AI keys live in `APME_REPO/containers/abbenay/.env`, not in this repo.
+
 ### Portal not accessible from another machine
 
 **Cause:** RHDH binds to `0.0.0.0:7007` inside the container, but the host firewall may block external access.

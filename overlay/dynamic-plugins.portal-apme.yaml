@@ -1,5 +1,5 @@
 # Portal + APME Dynamic Plugins (APME enabled)
-# Used when PORTAL_ONLY!=1 (full stack or APME_EXTERNAL).
+# Used when PORTAL_ONLY!=1 (APME plugins enabled; Gateway via make apme).
 # Plugin tarballs are loaded from local-plugins/portal/*.tgz
 
 includes:

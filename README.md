@@ -1,6 +1,8 @@
 # Automation Portal Local
 
-Run the Ansible Automation Portal (RHDH + Portal plugins) locally with Podman Compose. Optionally includes APME and a mock AAP server for development.
+Run the Ansible Automation Portal (RHDH + Portal plugins) locally with Podman Compose.
+Optionally includes a mock AAP server. APME runs from its own clone via `make apme`
+(`tox -e up`) — this repo does not bundle the APME stack in compose.
 
 This repository wraps [rhdh-local](https://github.com/redhat-developer/rhdh-local) as a git submodule and adds Portal configuration overlays, scripts, and an EAP distribution workflow. It uses RHDH's [dynamic plugin loading](https://docs.redhat.com/en/documentation/red_hat_developer_hub/) — the same mechanism used in production.
 
@@ -8,7 +10,7 @@ This repository wraps [rhdh-local](https://github.com/redhat-developer/rhdh-loca
 
 - [Customer Quick Start](#customer-quick-start)
 - [Developer Quick Start](#developer-quick-start)
-- [Deployment Modes](docs/deployment-modes.md) — portal-only, full stack, external APME
+- [Deployment Modes](docs/deployment-modes.md) — portal-only vs full stack (external APME)
 - [Customer Guide](docs/customer-guide.md) — multi-org config, plugin updates, EC2 setup
 - [Troubleshooting](docs/troubleshooting.md) — OAuth, containers, plugins, networking
 - [Prerequisites](#prerequisites)
@@ -45,7 +47,7 @@ Portal UI: http://localhost:7007
 
 ## Developer Quick Start
 
-Day-to-day plugin work mounts each plugin's `dist-dynamic` into RHDH. Uses the built-in mock AAP server by default.
+Day-to-day plugin work mounts each plugin's `dist-dynamic` into RHDH. Uses the built-in mock AAP server by default. APME is started via `make apme` (`tox -e up` in your apme clone) — `make dev` does this automatically when the Gateway is down.
 
 ```bash
 # 1. Clone with submodules
@@ -54,9 +56,9 @@ cd automation-portal-local
 
 # 2. Set environment variables
 cp .env.example .env
-# Edit .env — set PLUGIN_REPO to your ansible-backstage-plugins clone
+# Edit .env — set PLUGIN_REPO (plugins) and APME_REPO (default: ~/github/apme)
 
-# 3. Start (exports dist-dynamic, mounts them, starts compose)
+# 3. Start (exports dist-dynamic, ensures APME is up, mounts plugins, starts compose)
 make dev
 ```
 
@@ -66,21 +68,23 @@ Portal UI: http://localhost:7007 — Login: Sign in with AAP → mock → `user`
 make reload                         # re-export changed plugins + restart rhdh
 make reload PLUGINS=backstage-apme  # one plugin
 make reload-fe                      # FE only (browser refresh, no restart)
+make apme-down                      # stop the APME pod (Portal can keep running)
 ```
 
-This is **not** webpack HMR — RHDH reloads mounted files on container restart. See [Deployment Modes](docs/deployment-modes.md) for portal-only, external APME, and other configurations.
+This is **not** webpack HMR — RHDH reloads mounted files on container restart. See [Deployment Modes](docs/deployment-modes.md).
 
 ## Prerequisites
 
 - **Podman** 4.x+ with `podman compose` (or Docker 28.1.0+ with Compose)
-- **8 GB+ RAM** (RHDH + PostgreSQL; +4 GB when APME stack is enabled)
+- **8 GB+ RAM** (RHDH + PostgreSQL; more when APME is running via `make apme`)
 
 For developers building plugins locally:
 
 - **git** (for submodule management)
 - **Node.js** 22.x + Corepack
+- **APME clone** + **tox** (`uv tool install tox --with tox-uv`) when `PORTAL_ONLY!=1`
 
-Customers using pre-built tarballs (`SKIP_BUILD=1`) only need Podman.
+Customers using pre-built tarballs (`SKIP_BUILD=1`, `PORTAL_ONLY=1`) only need Podman.
 
 ## Getting Plugins
 
@@ -125,21 +129,24 @@ No local Node.js required. See [EAP Distribution](#eap-distribution).
 | `OAUTH_CLIENT_ID` | Yes | — | RHAAP OAuth client ID |
 | `OAUTH_CLIENT_SECRET` | Yes | — | RHAAP OAuth client secret |
 | `AAP_MOCK` | No | `1` (on) | `0` disables mock AAP server |
-| `PORTAL_ONLY` | No | `0` | `1` disables APME plugins + services (IAG delivery) |
-| `APME_EXTERNAL` | No | `0` | `1` APME plugins load, services run elsewhere |
+| `PORTAL_ONLY` | No | `0` | `1` disables APME plugins and skips `make apme` (IAG delivery) |
 | `PLUGIN_REPO` | Yes for `dev` | — | Path to ansible-backstage-plugins clone |
+| `APME_REPO` | Yes when APME enabled | `$HOME/github/apme` | Path to apme clone (`make apme`) |
+| `APME_BASE_URL` | No | `http://host.containers.internal:8080` | Gateway URL from RHDH (when `PORTAL_ONLY!=1`) |
 | `RHDH_IMAGE` | No | `quay.io/rhdh-community/rhdh:1.10` | RHDH base image |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | No | `0` | Set to `0` for self-signed AAP certs (dev only) |
 
-See `.env.example` for the full list including APME, GitHub/GitLab, and database variables.
+See `.env.example` for the full list including GitHub/GitLab and database variables.
 
 ## Make Targets
 
 | Target | Description |
 |---|---|
-| `make dev` | Dev loop: mount `dist-dynamic` + compose up |
-| `make start` | Tarball mode: build `.tgz` + start (`SKIP_BUILD=1` to reuse) |
-| `make stop` | Stop all services |
+| `make dev` | Dev loop: ensure APME + mount `dist-dynamic` + compose up |
+| `make start` | Tarball mode: ensure APME + build `.tgz` + start (`SKIP_BUILD=1` to reuse) |
+| `make apme` | Start APME (`cd APME_REPO && tox -e up`) |
+| `make apme-down` | Stop APME (`cd APME_REPO && tox -e down`) |
+| `make stop` | Stop Portal compose services (APME keeps running) |
 | `make reload` | Re-export changed plugins + restart rhdh |
 | `make reload-fe` | FE-only refresh (no restart) |
 | `make build-plugins` | Build plugin tarballs without starting |
@@ -181,23 +188,30 @@ tar czf automation-portal-local-multiorg.tar.gz \
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Podman Compose                                          │
+│  Podman Compose (this repo)                              │
 │                                                          │
 │  ┌──────────┐  ┌────────────────┐  ┌─────────────────┐  │
 │  │ install- │  │      rhdh      │  │       db        │  │
 │  │ dynamic- │→ │  (Portal UI)   │← │  (PostgreSQL)   │  │
 │  │ plugins  │  │   :7007        │  │                 │  │
-│  └──────────┘  └────────────────┘  └─────────────────┘  │
+│  └──────────┘  └───────┬────────┘  └─────────────────┘  │
 │                        │                                 │
-│           ┌────────────┴────────────┐                    │
-│           │  Optional (profiles)    │                    │
-│           ▼                         ▼                    │
-│  ┌─────────────────┐    ┌───────────────────────┐        │
-│  │    aap-mock     │    │    apme-gateway        │        │
-│  │  profile: mock  │    │    profile: apme       │        │
-│  │    :8099        │    │    + validators        │        │
-│  └─────────────────┘    └───────────────────────┘        │
-└──────────────────────────────────────────────────────────┘
+│               ┌────────┴────────┐                        │
+│               │  Optional mock  │                        │
+│               ▼                 │                        │
+│  ┌─────────────────┐            │                        │
+│  │    aap-mock     │            │ host.containers.internal│
+│  │  profile: mock  │            │                        │
+│  │    :8099        │            │                        │
+│  └─────────────────┘            │                        │
+└─────────────────────────────────┼────────────────────────┘
+                                  │
+                                  ▼
+                    ┌─────────────────────────┐
+                    │  APME pod (make apme)   │
+                    │  tox -e up in APME_REPO │
+                    │  Gateway :8080          │
+                    └─────────────────────────┘
 ```
 
 ## Repository Structure
@@ -230,4 +244,4 @@ automation-portal-local/
 | [ansible-backstage-plugins](https://github.com/ansible/ansible-backstage-plugins) | Portal plugin source code |
 | [ansible-rhdh-plugins](https://github.com/ansible-automation-platform/ansible-rhdh-plugins) | Plugin packaging + early-access CI |
 | [ansible-portal-chart](https://github.com/ansible-automation-platform/ansible-portal-chart) | Helm chart (OpenShift/K8s) |
-| [apme](https://github.com/ansible/apme) | APME engine source + container images |
+| [apme](https://github.com/ansible/apme) | APME engine — local pod via `make apme` (`tox -e up`) |
