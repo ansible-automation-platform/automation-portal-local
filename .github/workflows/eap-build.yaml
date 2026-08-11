@@ -112,6 +112,8 @@ jobs:
           yarn install
           yarn tsc
 
+          export PATH="$(pwd)/node_modules/.bin:$PATH"
+
           # Build common packages first
           for common_dir in plugins/*-common; do
             [ -d "$common_dir" ] && (cd "$common_dir" && yarn build)
