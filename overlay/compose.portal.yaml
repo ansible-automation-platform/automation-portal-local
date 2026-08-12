@@ -25,6 +25,13 @@ services:
       AAP_TOKEN: ${AAP_TOKEN:-local-mock-token}
       OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:-portal-local-mock}
       OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-portal-local-mock-secret}
+      # Optional: console Hub offline/refresh token (SSO-exchanged to Bearer access)
+      AAP_MOCK_HUB_TOKEN: ${AAP_MOCK_HUB_TOKEN:-}
+      AAP_MOCK_HUB_BASE: ${AAP_MOCK_HUB_BASE:-https://console.redhat.com/api/automation-hub}
+      AAP_MOCK_HUB_AUTH_URL: ${AAP_MOCK_HUB_AUTH_URL:-https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token}
+      AAP_MOCK_HUB_AUTH_CLIENT_ID: ${AAP_MOCK_HUB_AUTH_CLIENT_ID:-cloud-services}
+      AAP_MOCK_GALAXY_BASE: ${AAP_MOCK_GALAXY_BASE:-https://galaxy.ansible.com}
+      AAP_MOCK_PAH_REPOS: ${AAP_MOCK_PAH_REPOS:-community,validated,rh-certified}
     healthcheck:
       test:
         [
@@ -72,10 +79,13 @@ services:
         condition: service_healthy
     volumes:
       - ./configs/app-config/app-config.portal.yaml:/opt/app-root/src/configs/app-config/app-config.local.yaml:ro,z
+      # SELinux: named volume needs :Z or installer/rhdh get EACCES on /extensions
+      - extensions-catalog:/extensions:Z
 
   install-dynamic-plugins:
     volumes:
       - ./configs/dynamic-plugins/dynamic-plugins.portal.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,z
+      - extensions-catalog:/extensions:Z
 
 volumes:
   portal-pgdata:
