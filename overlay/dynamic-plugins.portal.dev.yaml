@@ -130,6 +130,10 @@ plugins:
                 config:
                   layout:
                     gridColumn: '1 / -1'
+                  if:
+                    allOf:
+                      - isKind: component
+                      - isType: git-repository
 
   # APME backend — set disabled: false when APME plugins are in PLUGIN_REPO
   - package: ./local-plugins/portal-dev/catalog-backend-module-apme
