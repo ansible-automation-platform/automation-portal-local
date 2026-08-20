@@ -134,6 +134,8 @@ No local Node.js required. See [EAP Distribution](#eap-distribution).
 | `APME_REPO` | Yes when APME enabled | `$HOME/github/apme` | Path to apme clone (`make apme`) |
 | `APME_BASE_URL` | No | `http://host.containers.internal:8080` | Gateway URL from RHDH (when `PORTAL_ONLY!=1`) |
 | `RHDH_IMAGE` | No | `quay.io/rhdh-community/rhdh:1.10` | RHDH base image |
+| `EXTENSIONS_CATALOG_INDEX` | `make extensions` | — | Extra catalog index image (`quay.io/<ns>/…`). Do not commit a personal namespace; see `docs/deployment-modes.md`. |
+| `APME_FRONTEND_OCI` / `APME_BACKEND_OCI` | `make extensions-index` | — | Pushable APME plugin OCI tags substituted into the extra index |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | No | `0` | Set to `0` for self-signed AAP certs (dev only) |
 
 See `.env.example` for the full list including GitHub/GitLab and database variables.
@@ -144,6 +146,8 @@ See `.env.example` for the full list including GitHub/GitLab and database variab
 |---|---|
 | `make dev` | Dev loop: ensure APME + mount `dist-dynamic` + compose up |
 | `make start` | Tarball mode: ensure APME + build `.tgz` + start (`SKIP_BUILD=1` to reuse) |
+| `make extensions` | Portal-only + Extensions UI + extra Quay catalog index (no local APME plugins) |
+| `make extensions-index` | Build/push the extra catalog index image to Quay |
 | `make apme` | Start APME (`cd APME_REPO && tox -e up`) |
 | `make apme-down` | Stop APME (`cd APME_REPO && tox -e down`) |
 | `make stop` | Stop Portal compose services (APME keeps running) |

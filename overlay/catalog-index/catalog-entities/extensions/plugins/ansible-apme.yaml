@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/redhat-developer/rhdh-plugins/refs/heads/main/workspaces/extensions/json-schema/plugins.json
+apiVersion: extensions.backstage.io/v1alpha1
+kind: Plugin
+metadata:
+  name: ansible-apme
+  namespace: rhdh
+  title: Ansible Quality (APME)
+  description: Scan and remediate Ansible content from Git repositories.
+  annotations:
+    extensions.backstage.io/catalog-source: ansible
+  tags:
+    - ansible
+    - quality
+  links:
+    - title: APME
+      url: https://github.com/ansible/apme
+spec:
+  author: Red Hat Ansible
+  publisher: Red Hat
+  license: Apache-2.0
+  lifecycle: experimental
+  support:
+    provider: Red Hat
+    level: community
+  categories:
+    - Automation
+  highlights:
+    - Scan Ansible Git repositories
+    - Remediate findings from Developer Hub
+    - Quality entity tab on git-repository Components
+  description: |
+    Ansible Policy & Modernization Engine (APME) for Automation Portal.
+
+    Installs the frontend and catalog backend module from OCI images on Quay
+    (not local tarballs). After install, restart the hub and point
+    `ansible.apme.baseUrl` at the APME Gateway (`make apme` →
+    `http://host.containers.internal:8080`).
+
+    Click-to-install is Developer Preview (`NODE_ENV=development`). Confirm the
+    generated pluginConfig includes `apmeApiFactory` and
+    `gitRepositoriesExtensionsApiFactory`.
+  icon: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iI2VlMDAwMCIvPjx0ZXh0IHg9IjE2IiB5PSIyMiIgZm9udC1zaXplPSIxNCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZpbGw9IiNmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkE8L3RleHQ+PC9zdmc+
+  packages:
+    - ansible-plugin-backstage-apme
+    - ansible-backstage-plugin-catalog-backend-module-apme

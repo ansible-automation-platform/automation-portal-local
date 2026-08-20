@@ -27,6 +27,13 @@ SKIP_BUILD    ?= 0
 FORCE_EXPORT  ?= 0
 # Set DEV_PROMPT=0 to skip the interactive R/F/S menu after make dev.
 DEV_PROMPT    ?= 1
+# make extensions: extra catalog index (Plugin YAML + oci:// APME images).
+EXTENSIONS_MODE ?= 0
+EXTENSIONS_CATALOG_INDEX ?=
+APME_FRONTEND_OCI ?=
+APME_BACKEND_OCI ?=
+EXTRA_CATALOG_INDEX_IMAGES ?=
+REGISTRY_AUTH_FILE ?=
 
 # ── Compose-profile resolution ──────────────────────────────────────
 # Profiles: mock (aap-mock). APME is external (make apme → tox -e up).
@@ -58,7 +65,9 @@ endif
 
 COMPOSE_PROFILES := $(shell echo '$(_PROFILES)' | tr ' ' ',')
 
-export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO APME_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK PORTAL_ONLY
+export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO APME_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK PORTAL_ONLY \
+       EXTENSIONS_MODE EXTENSIONS_CATALOG_INDEX APME_FRONTEND_OCI APME_BACKEND_OCI \
+       EXTRA_CATALOG_INDEX_IMAGES REGISTRY_AUTH_FILE
 
 # ── Compose file sets ────────────────────────────────────────────────
 COMPOSE_F     := -f compose.yaml -f compose.portal.yaml
@@ -89,7 +98,8 @@ endif
 #  User-facing targets
 # =====================================================================
 .PHONY: help dev start stop restart reload reload-fe dev-prompt export-plugins \
-        build-plugins clean logs status check-plugin-parity apme apme-down
+        build-plugins clean logs status check-plugin-parity apme apme-down \
+        extensions extensions-index
 
 help: ## Show available targets
 	@printf '\n\033[1mAutomation Portal Local\033[0m\n'
@@ -102,8 +112,13 @@ help: ## Show available targets
 	@printf '  \033[36mmake start\033[0m       Production-shaped tarball mode: \033[1mbuilds\033[0m plugins from\n'
 	@printf '                   PLUGIN_REPO, packs .tgz, then starts compose (same install path\n'
 	@printf '                   as OpenShift). Use SKIP_BUILD=1 only for pre-downloaded CI tarballs.\n\n'
-	@printf '  Both modes start the Almost-like-AAP mock by default and ensure APME is\n'
-	@printf '  up via \033[36mmake apme\033[0m (\033[1mtox -e up\033[0m in APME_REPO). Set PORTAL_ONLY=1 for no APME.\n\n'
+	@printf '  \033[36mmake extensions\033[0m Extensions catalog lab: portal-core tarballs from PLUGIN_REPO,\n'
+	@printf '                   no local APME plugins, extra Quay catalog index for APME OCI.\n'
+	@printf '                   Set EXTENSIONS_CATALOG_INDEX in .env (or on the command line).\n'
+	@printf '                   RHDH 1.10. Click-to-install is\n'
+	@printf '                   Developer Preview (NODE_ENV=development from rhdh-local).\n\n'
+	@printf '  \033[36mmake start\033[0m / \033[36mmake dev\033[0m start the Almost-like-AAP mock by default and\n'
+	@printf '  ensure APME via \033[36mmake apme\033[0m unless PORTAL_ONLY=1. \033[36mmake extensions\033[0m is portal-only.\n\n'
 	@printf '\033[1mTargets\033[0m\n\n'
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -115,7 +130,9 @@ help: ## Show available targets
 	@printf '  SKIP_BUILD=1            make start: skip rebuild, use existing .tgz\n'
 	@printf '  FORCE_EXPORT=1          Rebuild all plugins (skip incremental export)\n'
 	@printf '  DEV_PROMPT=0            Skip interactive R/F/S menu after make dev\n'
-	@printf '  PORTAL_ONLY=1           No APME plugins; skip make apme (IAG / portal-only)\n\n'
+	@printf '  PORTAL_ONLY=1           No APME plugins; skip make apme (IAG / portal-only)\n'
+	@printf '  EXTENSIONS_CATALOG_INDEX  Quay extra catalog index (make extensions)\n'
+	@printf '  APME_FRONTEND_OCI / APME_BACKEND_OCI  Plugin images for make extensions-index\n\n'
 
 apme: ## Start APME (cd APME_REPO && tox -e up)
 	@[ -d "$(APME_REPO)" ] || { \
@@ -148,8 +165,23 @@ dev-prompt: ## Re-enter the interactive DEV menu (R/F/S) without restarting comp
 
 start: check-plugin-parity _check-env _prereqs _stop-if-running _remove-legacy-apme _ensure-apme _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _prep-install-root _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
 	@echo "Starting services…"
-	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F) up -d
+	@cd $(RHDH_DIR) && \
+	  EXT=""; \
+	  if [ -f compose.portal.extensions.yaml ]; then EXT="-f compose.portal.extensions.yaml"; fi; \
+	  podman compose $(COMPOSE_F) $$EXT up -d
 	@$(MAKE) --no-print-directory _banner
+
+extensions: ## Portal-only + Extensions UI + extra Quay catalog index (no local APME plugins)
+	@[ -n "$(EXTENSIONS_CATALOG_INDEX)" ] || { \
+	  echo "ERROR: EXTENSIONS_CATALOG_INDEX is required."; \
+	  echo "  Example: make extensions EXTENSIONS_CATALOG_INDEX=quay.io/<ns>/portal-plugin-catalog-index:dev"; \
+	  echo "  Build/push that image first: make extensions-index"; \
+	  exit 1; }
+	@$(MAKE) start PORTAL_ONLY=1 EXTENSIONS_MODE=1 \
+	  EXTRA_CATALOG_INDEX_IMAGES="ansible=$(EXTENSIONS_CATALOG_INDEX)"
+
+extensions-index: ## Build and push the extra catalog index (Plugin YAML → Quay)
+	@$(ROOT_DIR)/scripts/build-extensions-index.sh
 
 check-plugin-parity: ## Fail if DEV vs tarball dynamic-plugins host contracts drift
 	@python3 "$(ROOT_DIR)/scripts/check-plugin-config-parity.py"
@@ -160,10 +192,12 @@ stop: ## Stop Portal compose services (APME keeps running — use make apme-down
 	fi
 	@cd $(RHDH_DIR) && \
 	  if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	  EXT=""; \
+	  if [ -f compose.portal.extensions.yaml ]; then EXT="-f compose.portal.extensions.yaml"; fi; \
 	  if [ -f compose.portal.dev.yaml ]; then \
-	    PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) down; \
+	    PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) $$EXT down; \
 	  else \
-	    podman compose $(COMPOSE_F) down; \
+	    podman compose $(COMPOSE_F) $$EXT down; \
 	  fi
 	@echo "Portal services stopped. APME (if running): make apme-down"
 
@@ -207,7 +241,9 @@ clean: ## Stop + remove volumes + clean copied overlays
 	@echo "Removing overlay files from rhdh-local…"
 	@rm -f  "$(RHDH_DIR)/compose.portal.yaml"
 	@rm -f  "$(RHDH_DIR)/compose.portal.dev.yaml"
+	@rm -f  "$(RHDH_DIR)/compose.portal.extensions.yaml"
 	@rm -f  "$(RHDH_DIR)/compose.apme.dev.yaml"
+	@rm -rf "$(RHDH_DIR)/.registry"
 	@rm -f  "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
 	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"
 	@rm -f  "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
@@ -239,7 +275,7 @@ status: ## Show running containers
 .PHONY: _check-env _prereqs _ensure-apme _remove-legacy-apme _stop-if-running _submodule \
         _overlays _overlays-dev _overlays-tarball _env-files _export-plugins _seed-extensions \
         _load-images _tarballs _sync-template _prep-dev-root _prep-install-root \
-        _build-tarballs _maybe-build-tarballs \
+        _build-tarballs _maybe-build-tarballs _extensions-overlay _extensions-auth \
         _banner _banner-dev _banner-apme
 
 _check-env:
@@ -314,10 +350,12 @@ _stop-if-running:
 	  RUNNING=$$(podman compose $(COMPOSE_F) ps -q 2>/dev/null | head -1); \
 	  if [ -n "$$RUNNING" ]; then \
 	    echo "Stopping existing stack before switching modes…"; \
+	    EXT=""; \
+	    if [ -f compose.portal.extensions.yaml ]; then EXT="-f compose.portal.extensions.yaml"; fi; \
 	    if [ -f compose.portal.dev.yaml ]; then \
-	      PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) down; \
+	      PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) $$EXT down; \
 	    else \
-	      podman compose $(COMPOSE_F) down; \
+	      podman compose $(COMPOSE_F) $$EXT down; \
 	    fi; \
 	  fi; \
 	fi
@@ -339,6 +377,12 @@ _overlays: _submodule
 	    "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
 	@cp "$(OVERLAY)/compose.portal.yaml" \
 	    "$(RHDH_DIR)/compose.portal.yaml"
+	@if [ "$(EXTENSIONS_MODE)" = "1" ]; then \
+	  cp "$(OVERLAY)/compose.portal.extensions.yaml" \
+	     "$(RHDH_DIR)/compose.portal.extensions.yaml"; \
+	else \
+	  rm -f "$(RHDH_DIR)/compose.portal.extensions.yaml"; \
+	fi
 
 _overlays-dev: _overlays
 	@cp "$(OVERLAY)/compose.portal.dev.yaml" \
@@ -359,13 +403,33 @@ _overlays-dev: _overlays
 _overlays-tarball: _overlays
 	@rm -f "$(RHDH_DIR)/compose.portal.dev.yaml"
 	@rm -f "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml"
-	@if [ "$(PORTAL_ONLY)" = "1" ]; then \
+	@if [ "$(EXTENSIONS_MODE)" = "1" ]; then \
+	  $(MAKE) --no-print-directory _extensions-overlay _extensions-auth; \
+	elif [ "$(PORTAL_ONLY)" = "1" ]; then \
 	  cp "$(OVERLAY)/dynamic-plugins.portal.yaml" \
 	     "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"; \
 	else \
 	  cp "$(OVERLAY)/dynamic-plugins.portal-apme.yaml" \
 	     "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"; \
 	fi
+
+_extensions-overlay:
+	@command -v python3 >/dev/null || { echo "ERROR: python3 required"; exit 1; }
+	@python3 "$(ROOT_DIR)/scripts/enable-extensions-overlay.py" \
+	  --src "$(OVERLAY)/dynamic-plugins.portal.yaml" \
+	  --dest "$(RHDH_DIR)/configs/dynamic-plugins/dynamic-plugins.portal.yaml"
+
+_extensions-auth:
+	@rm -rf "$(RHDH_DIR)/.registry"
+	@mkdir -p "$(RHDH_DIR)/.registry"
+	@AUTH_SRC=""; \
+	  if [ -f "$$HOME/.config/containers/auth.json" ]; then AUTH_SRC="$$HOME/.config/containers/auth.json"; \
+	  elif [ -n "$${XDG_RUNTIME_DIR:-}" ] && [ -f "$$XDG_RUNTIME_DIR/containers/auth.json" ]; then AUTH_SRC="$$XDG_RUNTIME_DIR/containers/auth.json"; \
+	  fi; \
+	  if [ -n "$$AUTH_SRC" ]; then \
+	    cp "$$AUTH_SRC" "$(RHDH_DIR)/.registry/auth.json"; \
+	    echo "Copied host registry auth from $$AUTH_SRC for catalog/plugin OCI pulls"; \
+	  fi
 
 _sync-template:
 	@if [ "$(PORTAL_ONLY)" = "1" ]; then \
@@ -392,15 +456,25 @@ _env-files:
 	  : > "$(ROOT_DIR)/.env.platform"; \
 	fi; \
 	cat "$(ROOT_DIR)/.env" "$(ROOT_DIR)/.env.platform" > "$(RHDH_DIR)/.env"; \
+	AUTH_FILE_VAL=""; \
+	if [ "$(EXTENSIONS_MODE)" = "1" ] && [ -f "$(RHDH_DIR)/.registry/auth.json" ]; then \
+	  AUTH_FILE_VAL=/opt/app-root/src/.registry/auth.json; \
+	fi; \
 	for pair in \
 	  "COMPOSE_PROFILES=$(COMPOSE_PROFILES)" \
 	  "APME_BASE_URL=$(APME_BASE_URL)" \
-	  "PLUGIN_REPO=$(PLUGIN_REPO)"; do \
+	  "PLUGIN_REPO=$(PLUGIN_REPO)" \
+	  "EXTRA_CATALOG_INDEX_IMAGES=$(EXTRA_CATALOG_INDEX_IMAGES)"; do \
 	  key="$${pair%%=*}"; \
 	  grep -v "^$$key=" "$(RHDH_DIR)/.env" > "$(RHDH_DIR)/.env.tmp" 2>/dev/null || true; \
 	  mv "$(RHDH_DIR)/.env.tmp" "$(RHDH_DIR)/.env"; \
 	  echo "$$pair" >> "$(RHDH_DIR)/.env"; \
-	done
+	done; \
+	grep -v "^REGISTRY_AUTH_FILE=" "$(RHDH_DIR)/.env" > "$(RHDH_DIR)/.env.tmp" 2>/dev/null || true; \
+	mv "$(RHDH_DIR)/.env.tmp" "$(RHDH_DIR)/.env"; \
+	if [ -n "$$AUTH_FILE_VAL" ]; then \
+	  echo "REGISTRY_AUTH_FILE=$$AUTH_FILE_VAL" >> "$(RHDH_DIR)/.env"; \
+	fi
 
 _build-tarballs: _export-plugins
 	@command -v npm >/dev/null || { echo "ERROR: npm required to pack plugin tarballs"; exit 1; }
@@ -490,6 +564,12 @@ _banner:
 	@echo ""
 	@echo "=== Portal is starting (tarball mode) ==="
 	@echo "  Portal UI:     http://localhost:7007"
+	@if [ "$(EXTENSIONS_MODE)" = "1" ]; then \
+	  echo "  Extensions:    http://localhost:7007/extensions/catalog"; \
+	  echo "  Extra index:   $(EXTENSIONS_CATALOG_INDEX)"; \
+	  echo "  APME plugins:  not loaded locally — install from the catalog (then restart)"; \
+	  echo "  Gateway:       make apme  (PORTAL_ONLY skipped it)"; \
+	fi
 	@$(MAKE) --no-print-directory _banner-apme
 	@if [ "$(SKIP_BUILD)" = "1" ]; then \
 	  echo "  Plugins:       existing .tgz (SKIP_BUILD=1)"; \

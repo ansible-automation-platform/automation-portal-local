@@ -72,3 +72,101 @@ When `PORTAL_ONLY=1`, the default `PLUGINS` list excludes APME plugins (`backsta
 Otherwise all plugins (including APME) are included and point at `APME_BASE_URL`.
 
 Override with `PLUGINS="..."` on the command line if needed.
+
+## Extensions catalog lab (`make extensions`)
+
+RHDH 1.10 already ships the Extensions card catalog (Technology Preview) and
+click-to-install (Developer Preview, `NODE_ENV=development` in rhdh-local).
+Portal overlays keep those plugins **disabled**. This target turns them on
+without loading APME from `PLUGIN_REPO`.
+
+Do **not** commit a personal Quay namespace. Put image refs in gitignored `.env`
+(or pass them on the command line). Shared/production images should live under
+an org namespace (for example `quay.io/ansible/…`) once they exist.
+
+| Piece | Source |
+|---|---|
+| RHDH | `RHDH_IMAGE` (default `quay.io/rhdh-community/rhdh:1.10`) |
+| Portal plugins (auth, catalog-rhaap, self-service, scaffolder) | tarballs from `PLUGIN_REPO` (APME **branch** is fine) |
+| APME plugins | **not** local `.tgz` — extra catalog index on Quay → `oci://` images |
+| Primary plugin defaults | rhdh-local `CATALOG_INDEX_IMAGE` (`quay.io/rhdh/plugin-catalog-index:1.10.2`) |
+| Extra index | `overlay/catalog-index/` (TechDocs, GitHub, APME). Catalog UI reads **only** this shelf (`/extensions/extra`), not the full official RHDH index. |
+
+### What you must supply
+
+Three **pushable** Quay image tags (replace `<ns>` with a namespace you can write):
+
+| Variable | Image | What it is |
+|---|---|---|
+| `APME_FRONTEND_OCI` | `quay.io/<ns>/plugin-backstage-apme:<tag>` | APME frontend dynamic plugin OCI |
+| `APME_BACKEND_OCI` | `quay.io/<ns>/plugin-catalog-backend-module-apme:<tag>` | APME catalog backend module OCI |
+| `EXTENSIONS_CATALOG_INDEX` | `quay.io/<ns>/portal-plugin-catalog-index:<tag>` | Extra catalog **index** (Plugin YAML + package refs). Built by `make extensions-index`. |
+
+Package the two APME plugins from `PLUGIN_REPO` **after** `dist-dynamic` exists
+(export first, or reuse an export from `make start` / `make reload`). From each
+plugin directory (not `dist-dynamic/`):
+
+```bash
+cd "$PLUGIN_REPO/plugins/backstage-apme"
+npx @red-hat-developer-hub/cli@latest plugin package --tag quay.io/<ns>/plugin-backstage-apme:dev
+podman push quay.io/<ns>/plugin-backstage-apme:dev
+
+cd "$PLUGIN_REPO/plugins/catalog-backend-module-apme"
+npx @red-hat-developer-hub/cli@latest plugin package --tag quay.io/<ns>/plugin-catalog-backend-module-apme:dev
+podman push quay.io/<ns>/plugin-catalog-backend-module-apme:dev
+```
+
+`make extensions-index` appends these OCI layer names by default:
+
+- frontend: `!ansible-plugin-backstage-apme`
+- backend: `!ansible-backstage-plugin-catalog-backend-module-apme`
+
+Override with `APME_FRONTEND_LAYER` / `APME_BACKEND_LAYER` if `plugin package`
+printed different `oci://…!layer` paths.
+
+Also required: `podman login quay.io` so both the host (index push) and the
+installer (plugin/index pull) can reach private repos. Make copies host
+registry auth from `~/.config/containers/auth.json` or
+`$XDG_RUNTIME_DIR/containers/auth.json` into `rhdh-local/.registry/` (gitignored).
+
+### Run the lab
+
+```bash
+# In .env (gitignored) or exported in the shell — never commit real tags:
+EXTENSIONS_CATALOG_INDEX=quay.io/<ns>/portal-plugin-catalog-index:dev
+APME_FRONTEND_OCI=quay.io/<ns>/plugin-backstage-apme:dev
+APME_BACKEND_OCI=quay.io/<ns>/plugin-catalog-backend-module-apme:dev
+
+podman login quay.io
+make extensions-index
+make extensions
+```
+
+Open http://localhost:7007/extensions/catalog (Administration → Extensions).
+`/extensions` alone 404s.
+
+After **Install** in the UI, re-run the installer and restart `rhdh`. A browser
+refresh is not enough. Do **not** re-run `make extensions` for that step — it
+reseeds overlays and can clear the install:
+
+```bash
+cd rhdh-local
+podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.extensions.yaml \
+  run --rm install-dynamic-plugins
+podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.extensions.yaml \
+  stop rhdh && \
+podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.extensions.yaml \
+  start rhdh
+```
+
+Confirm the generated plugin YAML still lists `apmeApiFactory` and
+`gitRepositoriesExtensionsApiFactory`.
+
+`make extensions` is `PORTAL_ONLY=1`, so it does **not** start the Gateway.
+Scans need `make apme` and `ansible.apme.baseUrl` /
+`APME_BASE_URL=http://host.containers.internal:8080` (there is no Gateway URL
+field in Quality settings yet).
+
+If the catalog still shows the full official RHDH shelf, wipe the Postgres
+volume (`rhdh-local_portal-pgdata` or similar) so the provider re-ingests only
+`/extensions/extra`.

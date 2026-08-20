@@ -193,6 +193,13 @@ if [ ! -d "$PLUGIN_REPO/node_modules" ]; then
   (cd "$PLUGIN_REPO" && yarn install)
 fi
 
+# janus-cli embeds *-common packages and requires .d.ts from yarn tsc
+# (same order as .github/workflows/eap-build.yaml).
+if [ ! -f "$PLUGIN_REPO/dist-types/plugins/backstage-rhaap-common/src/index.d.ts" ]; then
+  echo "Generating TypeScript declarations (yarn tsc)…"
+  (cd "$PLUGIN_REPO" && yarn tsc)
+fi
+
 if [ "$EXPORT_DEV" = "1" ]; then
   echo "=== FE --dev export (incremental) ==="
   if [ -n "$DYNAMIC_PLUGINS_ROOT" ]; then

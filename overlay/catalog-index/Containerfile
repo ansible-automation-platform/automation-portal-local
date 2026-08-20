@@ -1,0 +1,4 @@
+# Scratch catalog index for EXTRA_CATALOG_INDEX_IMAGES.
+# Extra indexes contribute Plugin YAML only (not dynamic-plugins.default.yaml).
+FROM scratch
+COPY catalog-entities /catalog-entities

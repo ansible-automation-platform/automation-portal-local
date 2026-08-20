@@ -1,0 +1,29 @@
+# Extra compose for `make extensions`.
+# Copied to rhdh-local/compose.portal.extensions.yaml.
+#
+# EXTRA_CATALOG_INDEX_IMAGES is injected into rhdh-local/.env by Make.
+# Optional host registry auth (podman login) is copied to .registry/auth.json.
+#
+# The official CATALOG_INDEX_IMAGE still supplies dynamic-plugins.default.yaml.
+# Its Plugin YAML is removed after extract so the Extensions UI shows only the
+# extra index (the catalog module falls back to /extensions and would otherwise
+# glob the official shelf even when extensions.directory is set).
+
+services:
+  install-dynamic-plugins:
+    environment:
+      EXTRA_CATALOG_INDEX_IMAGES: ${EXTRA_CATALOG_INDEX_IMAGES:-}
+    volumes:
+      - ./.registry:/opt/app-root/src/.registry:ro,Z
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -euo pipefail
+        ./prepare-and-install-dynamic-plugins.sh
+        rm -rf /extensions/catalog-entities
+        echo "Removed official Extensions catalog entities; extra index remains under /extensions/extra"
+
+  rhdh:
+    environment:
+      RHDH_EXTENSIONS_DIRECTORY: /extensions/extra

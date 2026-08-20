@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Enable RHDH Extensions on a portal-only dynamic-plugins overlay.
+
+Reads overlay/dynamic-plugins.portal.yaml (APME already disabled) and writes
+a generated overlay that:
+  - enables the Extensions frontend
+  - adds the 1.10 catalog-backend-module-extensions + extensions-backend
+  - includes dynamic-plugins.extensions.yaml so UI install can persist
+
+Does not enable local APME tarballs. APME is expected from an extra catalog
+index (EXTRA_CATALOG_INDEX_IMAGES) + OCI pulls. The Extensions catalog UI
+reads only /extensions/extra (your index), not the official RHDH shelf.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any
+
+try:
+    import yaml
+except ImportError as exc:  # pragma: no cover
+    print("PyYAML is required: pip install pyyaml", file=sys.stderr)
+    raise SystemExit(2) from exc
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SRC = ROOT / "overlay" / "dynamic-plugins.portal.yaml"
+
+EXTENSIONS_FE = (
+    "./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-extensions"
+)
+EXTENSIONS_CATALOG = (
+    "./dynamic-plugins/dist/"
+    "red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic"
+)
+EXTENSIONS_BE = (
+    "./dynamic-plugins/dist/"
+    "red-hat-developer-hub-backstage-plugin-extensions-backend-dynamic"
+)
+
+# Must match quay.io/rhdh/plugin-catalog-index:1.10.2 (not the old marketplace ID).
+EXTENSIONS_FE_CONFIG: dict[str, Any] = {
+    "dynamicPlugins": {
+        "frontend": {
+            "red-hat-developer-hub.backstage-plugin-extensions": {
+                "translationResources": [
+                    {
+                        "importName": "extensionsTranslations",
+                        "ref": "extensionsTranslationRef",
+                        "module": "Alpha",
+                    }
+                ],
+                "appIcons": [
+                    {"name": "pluginsIcon", "importName": "PluginsIcon"},
+                ],
+                "dynamicRoutes": [
+                    {
+                        "path": "/extensions",
+                        "importName": "DynamicExtensionsPluginRouter",
+                        "menuItem": {
+                            "icon": "pluginsIcon",
+                            "text": "Extensions",
+                            "textKey": "menuItem.extensions",
+                        },
+                    }
+                ],
+                "menuItems": {
+                    "extensions": {"parent": "default.admin"},
+                },
+            }
+        }
+    }
+}
+
+EXTENSIONS_BE_CONFIG: dict[str, Any] = {
+    "extensions": {
+        "installation": {
+            "enabled": True,
+            "saveToSingleFile": {
+                "file": (
+                    "/opt/app-root/src/dynamic-plugins-root/"
+                    "dynamic-plugins.extensions.yaml"
+                ),
+            },
+        }
+    }
+}
+
+# Official index still supplies dynamic-plugins.default.yaml. Catalog cards
+# come only from EXTRA_CATALOG_INDEX_IMAGES (extracted under /extensions/extra).
+EXTENSIONS_CATALOG_CONFIG: dict[str, Any] = {
+    "extensions": {
+        "directory": "/extensions/extra",
+    }
+}
+
+
+def _pkg(entry: dict[str, Any]) -> str:
+    return str(entry.get("package") or "")
+
+
+def _upsert(
+    plugins: list[dict[str, Any]], package: str, **fields: Any
+) -> None:
+    for entry in plugins:
+        if _pkg(entry) == package:
+            entry["disabled"] = False
+            entry.update(fields)
+            return
+    plugins.append({"package": package, "disabled": False, **fields})
+
+
+def transform(doc: dict[str, Any]) -> dict[str, Any]:
+    includes = list(doc.get("includes") or [])
+    ext_include = "/dynamic-plugins-root/dynamic-plugins.extensions.yaml"
+    if ext_include not in includes:
+        includes.append(ext_include)
+    doc["includes"] = includes
+
+    plugins = list(doc.get("plugins") or [])
+    _upsert(plugins, EXTENSIONS_FE, pluginConfig=EXTENSIONS_FE_CONFIG)
+    _upsert(plugins, EXTENSIONS_CATALOG, pluginConfig=EXTENSIONS_CATALOG_CONFIG)
+    _upsert(plugins, EXTENSIONS_BE, pluginConfig=EXTENSIONS_BE_CONFIG)
+    doc["plugins"] = plugins
+    return doc
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--src",
+        type=Path,
+        default=DEFAULT_SRC,
+        help="portal-only overlay (APME disabled)",
+    )
+    parser.add_argument(
+        "--dest",
+        type=Path,
+        required=True,
+        help="generated overlay path",
+    )
+    args = parser.parse_args()
+    if not args.src.is_file():
+        print(f"Missing {args.src}", file=sys.stderr)
+        return 1
+    data = yaml.safe_load(args.src.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        print(f"Expected mapping in {args.src}", file=sys.stderr)
+        return 1
+    out = transform(data)
+    args.dest.parent.mkdir(parents=True, exist_ok=True)
+    header = (
+        "# Generated by scripts/enable-extensions-overlay.py — do not edit.\n"
+        "# Source: overlay/dynamic-plugins.portal.yaml (PORTAL_ONLY, APME off).\n"
+        "# Extensions UI + extra catalog index; APME comes from Quay OCI.\n\n"
+    )
+    args.dest.write_text(
+        header
+        + yaml.safe_dump(
+            out,
+            sort_keys=False,
+            default_flow_style=False,
+            allow_unicode=True,
+            width=100,
+        ),
+        encoding="utf-8",
+    )
+    print(f"Wrote {args.dest}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
