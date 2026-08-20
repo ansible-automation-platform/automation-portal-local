@@ -146,7 +146,7 @@ See `.env.example` for the full list including GitHub/GitLab and database variab
 |---|---|
 | `make dev` | Dev loop: ensure APME + mount `dist-dynamic` + compose up |
 | `make start` | Tarball mode: ensure APME + build `.tgz` + start (`SKIP_BUILD=1` to reuse) |
-| `make extensions` | Portal-only + Extensions UI + extra Quay catalog index (no local APME plugins) |
+| `make extensions` | Portal-only + Extensions UI + extra Quay catalog index. After catalog Install, run again (`SKIP_BUILD=1`). `make clean` wipes guests. |
 | `make extensions-index` | Build/push the extra catalog index image to Quay |
 | `make apme` | Start APME (`cd APME_REPO && tox -e up`) |
 | `make apme-down` | Stop APME (`cd APME_REPO && tox -e down`) |

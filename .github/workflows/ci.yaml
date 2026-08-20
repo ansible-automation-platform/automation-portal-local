@@ -94,6 +94,11 @@ jobs:
           print('  ✓ extensions overlay keeps APME disabled and enables Extensions')
           "
 
+      - name: Preserve click-install extensions yaml
+        run: |
+          pip install -q pyyaml
+          python3 scripts/ensure-extensions-yaml.py --self-test
+
       - name: Validate app-config YAML syntax
         run: |
           python3 -c "

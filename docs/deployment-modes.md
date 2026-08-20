@@ -145,27 +145,24 @@ make extensions
 Open http://localhost:7007/extensions/catalog (Administration → Extensions).
 `/extensions` alone 404s.
 
-After **Install** in the UI, re-run the installer and restart `rhdh`. A browser
-refresh is not enough. Do **not** re-run `make extensions` for that step — it
-reseeds overlays and can clear the install:
+After **Install** in the UI, run `make extensions` again (or `make stop` then
+`make extensions`). Click-install state lives on the plugins volume;
+`dynamic-plugins.extensions.yaml` is preserved. Use `SKIP_BUILD=1` to skip
+rebuilding portal tarballs:
 
 ```bash
-cd rhdh-local
-podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.extensions.yaml \
-  run --rm install-dynamic-plugins
-podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.extensions.yaml \
-  stop rhdh && \
-podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.extensions.yaml \
-  start rhdh
+make extensions SKIP_BUILD=1
 ```
 
-Confirm the generated plugin YAML still lists `apmeApiFactory` and
-`gitRepositoriesExtensionsApiFactory`.
+`make clean` is the wipe (volumes + click-install). A browser refresh is not
+enough — the installer must run so APME OCI packages load. Missing
+`pluginConfig` (`apmeApiFactory`, `gitRepositoriesExtensionsApiFactory`) is
+filled from the extra catalog Package YAML.
 
 `make extensions` is `PORTAL_ONLY=1`, so it does **not** start the Gateway.
-Scans need `make apme` and `ansible.apme.baseUrl` /
-`APME_BASE_URL=http://host.containers.internal:8080` (there is no Gateway URL
-field in Quality settings yet).
+Scans need `make apme`. Set **APME Gateway URL** in Quality settings to
+`http://host.containers.internal:8080` (or `ansible.apme.baseUrl` /
+`APME_BASE_URL`).
 
 If the catalog still shows the full official RHDH shelf, wipe the Postgres
 volume (`rhdh-local_portal-pgdata` or similar) so the provider re-ingests only

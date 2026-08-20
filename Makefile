@@ -115,8 +115,8 @@ help: ## Show available targets
 	@printf '  \033[36mmake extensions\033[0m Extensions catalog lab: portal-core tarballs from PLUGIN_REPO,\n'
 	@printf '                   no local APME plugins, extra Quay catalog index for APME OCI.\n'
 	@printf '                   Set EXTENSIONS_CATALOG_INDEX in .env (or on the command line).\n'
-	@printf '                   RHDH 1.10. Click-to-install is\n'
-	@printf '                   Developer Preview (NODE_ENV=development from rhdh-local).\n\n'
+	@printf '                   After catalog Install, run \033[36mmake extensions\033[0m again (volumes persist;\n'
+	@printf '                   use SKIP_BUILD=1 to skip tarball rebuild). \033[36mmake clean\033[0m wipes the lab.\n\n'
 	@printf '  \033[36mmake start\033[0m / \033[36mmake dev\033[0m start the Almost-like-AAP mock by default and\n'
 	@printf '  ensure APME via \033[36mmake apme\033[0m unless PORTAL_ONLY=1. \033[36mmake extensions\033[0m is portal-only.\n\n'
 	@printf '\033[1mTargets\033[0m\n\n'
@@ -127,7 +127,7 @@ help: ## Show available targets
 	@printf '  APME_REPO=<path>        Path to apme clone (for make apme)\n'
 	@printf '  PLUGINS="name …"        Limit export/reload/build to specific plugins\n'
 	@printf '  FE_PLUGINS="name …"     Limit reload-fe to specific frontend plugins\n'
-	@printf '  SKIP_BUILD=1            make start: skip rebuild, use existing .tgz\n'
+	@printf '  SKIP_BUILD=1            make start / make extensions: skip rebuild, use existing .tgz\n'
 	@printf '  FORCE_EXPORT=1          Rebuild all plugins (skip incremental export)\n'
 	@printf '  DEV_PROMPT=0            Skip interactive R/F/S menu after make dev\n'
 	@printf '  PORTAL_ONLY=1           No APME plugins; skip make apme (IAG / portal-only)\n'
@@ -515,6 +515,10 @@ _tarballs:
 # Wipe previously installed portal plugins so install-dynamic-plugins cannot
 # treat same name@version as already_installed.
 #
+# Deletes ansible-* plugin dirs (including click-installed APME extracts).
+# dynamic-plugins.extensions.yaml is NOT ansible-* — _seed-extensions keeps it
+# so the installer re-pulls guest OCI packages on the next start.
+#
 # Important: make start uses the named compose volume
 #   rhdh-local_dynamic-plugins-root
 # make dev bind-mounts the host dir
@@ -538,12 +542,7 @@ _prep-install-root:
 _prep-dev-root: _prep-install-root
 
 _seed-extensions:
-	@mkdir -p "$(RHDH_DIR)/dynamic-plugins-root"
-	@printf '%s\n' \
-	  '# Prevent Extensions installer from GC-deleting portal plugins.' \
-	  'includes: []' \
-	  'plugins: []' \
-	  > "$(RHDH_DIR)/dynamic-plugins-root/dynamic-plugins.extensions.yaml"
+	@$(ROOT_DIR)/scripts/sync-extensions-yaml.sh "$(RHDH_DIR)"
 
 _export-plugins:
 	@command -v yarn >/dev/null || { echo "ERROR: yarn required for plugin export"; exit 1; }
@@ -567,7 +566,8 @@ _banner:
 	@if [ "$(EXTENSIONS_MODE)" = "1" ]; then \
 	  echo "  Extensions:    http://localhost:7007/extensions/catalog"; \
 	  echo "  Extra index:   $(EXTENSIONS_CATALOG_INDEX)"; \
-	  echo "  APME plugins:  not loaded locally — install from the catalog (then restart)"; \
+	  echo "  APME plugins:  install from the catalog, then make extensions again"; \
+	  echo "                 (SKIP_BUILD=1 skips tarball rebuild; make clean wipes guests)"; \
 	  echo "  Gateway:       make apme  (PORTAL_ONLY skipped it)"; \
 	fi
 	@$(MAKE) --no-print-directory _banner-apme
