@@ -49,12 +49,16 @@ jobs:
           python3 -c "
           import yaml, sys
           errors = 0
-          for path in (
-              'overlay/dynamic-plugins.portal.yaml',
-              'overlay/dynamic-plugins.portal.dev.yaml',
-          ):
+          from pathlib import Path
+          paths = [
+              Path('overlay/dynamic-plugins.portal.yaml'),
+              Path('overlay/dynamic-plugins.portal.dev.yaml'),
+              Path('overlay/compose.portal.extensions.yaml'),
+          ]
+          paths += sorted(Path('overlay/catalog-index').rglob('*.yaml'))
+          for path in paths:
               try:
-                  yaml.safe_load(open(path))
+                  yaml.safe_load(path.open())
                   print(f'  ✓ {path}')
               except yaml.YAMLError as e:
                   print(f'  ✗ {path}: {e}')
@@ -66,6 +70,34 @@ jobs:
         run: |
           pip install -q pyyaml
           python3 scripts/check-plugin-config-parity.py
+
+      - name: Extensions overlay generator
+        run: |
+          pip install -q pyyaml
+          python3 scripts/enable-extensions-overlay.py \
+            --dest /tmp/dynamic-plugins.portal-extensions.yaml
+          python3 -c "
+          import yaml
+          doc = yaml.safe_load(open('/tmp/dynamic-plugins.portal-extensions.yaml'))
+          pkgs = {p['package']: p for p in doc['plugins']}
+          fe = './dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-extensions'
+          be = './dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-extensions-backend-dynamic'
+          cat = './dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions-dynamic'
+          assert pkgs[fe]['disabled'] is False, fe
+          assert pkgs[be]['disabled'] is False, be
+          fe_id = next(iter(pkgs[fe]['pluginConfig']['dynamicPlugins']['frontend']))
+          assert fe_id == 'red-hat-developer-hub.backstage-plugin-extensions', fe_id
+          assert pkgs[cat]['pluginConfig']['extensions']['directory'] == '/extensions/extra'
+          apme = [p for p in doc['plugins'] if 'backstage-apme' in p.get('package','')]
+          assert apme and all(p.get('disabled') for p in apme), apme
+          assert '/dynamic-plugins-root/dynamic-plugins.extensions.yaml' in doc['includes']
+          print('  ✓ extensions overlay keeps APME disabled and enables Extensions')
+          "
+
+      - name: Preserve click-install extensions yaml
+        run: |
+          pip install -q pyyaml
+          python3 scripts/ensure-extensions-yaml.py --self-test
 
       - name: Validate app-config YAML syntax
         run: |

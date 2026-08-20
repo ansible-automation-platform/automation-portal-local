@@ -1,0 +1,43 @@
+apiVersion: extensions.backstage.io/v1alpha1
+kind: Package
+metadata:
+  name: ansible-plugin-backstage-apme
+  namespace: rhdh
+  title: Ansible Quality (APME) frontend
+  tags:
+    - ansible
+spec:
+  packageName: '@ansible/plugin-backstage-apme'
+  dynamicArtifact: oci://APME_FRONTEND_OCI
+  version: 2026.8.0
+  backstage:
+    role: frontend-plugin
+    supportedVersions: 1.49.4
+  author: Red Hat Ansible
+  support: community
+  lifecycle: experimental
+  partOf:
+    - ansible-apme
+  appConfigExamples:
+    - title: Default configuration
+      content:
+        dynamicPlugins:
+          frontend:
+            ansible.plugin-backstage-apme:
+              apiFactories:
+                - importName: apmeApiFactory
+                - importName: gitRepositoriesExtensionsApiFactory
+              entityTabs:
+                - path: /apme
+                  title: Quality
+                  mountPoint: entity.page.apme
+              mountPoints:
+                - mountPoint: entity.page.apme/cards
+                  importName: ApmeEntityTab
+                  config:
+                    layout:
+                      gridColumn: '1 / -1'
+                    if:
+                      allOf:
+                        - isKind: component
+                        - isType: git-repository

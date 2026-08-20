@@ -13,7 +13,7 @@ plugins:
     disabled: false
 
   # Scaffolder backend (RHAAP)
-  - package: ./local-plugins/portal/ansible-plugin-scaffolder-backend-module-backstage-rhaap-dynamic-2.2.5.tgz
+  - package: ./local-plugins/portal/ansible-plugin-scaffolder-backend-module-backstage-rhaap-dynamic-2026.8.0.tgz
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -21,11 +21,11 @@ plugins:
           ansible.plugin-scaffolder-backend-module-backstage-rhaap:
 
   # Catalog backend (RHAAP)
-  - package: ./local-plugins/portal/ansible-backstage-plugin-catalog-backend-module-rhaap-dynamic-2.2.5.tgz
+  - package: ./local-plugins/portal/ansible-backstage-plugin-catalog-backend-module-rhaap-dynamic-2026.8.0.tgz
     disabled: false
 
   # Self-Service frontend
-  - package: ./local-plugins/portal/ansible-plugin-backstage-self-service-dynamic-2.2.5.tgz
+  - package: ./local-plugins/portal/ansible-plugin-backstage-self-service-dynamic-2026.8.0.tgz
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -95,7 +95,7 @@ plugins:
                   priority: 100
 
   # Auth backend (RHAAP OAuth)
-  - package: ./local-plugins/portal/ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-2.2.5.tgz
+  - package: ./local-plugins/portal/ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-2026.8.0.tgz
     disabled: false
     pluginConfig: {}
 

@@ -8,6 +8,7 @@ Rules for AI agents and humans working in this repository.
 |--------|--------|---------|
 | `make dev` | `overlay/dynamic-plugins.portal.dev.yaml` | Edit plugin source; bind-mount `dist-dynamic` |
 | `make start` | `overlay/dynamic-plugins.portal.yaml` | Production-shaped tarballs / EAP parity |
+| `make extensions` | generated from `portal.yaml` | Portal-only + Extensions UI + extra Quay catalog index. Image tags live in gitignored `.env`; see `docs/deployment-modes.md`. Click-install is kept across `make extensions`; `make clean` wipes it. |
 
 Both modes must load the same **host contract** for enabled plugins. Package paths differ (`.tgz` vs `local-plugins/portal-dev/…`); `pluginConfig` must not. APME plugins are optional — when disabled, the parity check skips them.
 

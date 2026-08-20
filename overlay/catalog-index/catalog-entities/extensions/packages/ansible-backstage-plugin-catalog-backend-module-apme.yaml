@@ -1,0 +1,26 @@
+apiVersion: extensions.backstage.io/v1alpha1
+kind: Package
+metadata:
+  name: ansible-backstage-plugin-catalog-backend-module-apme
+  namespace: rhdh
+  title: Ansible Quality (APME) catalog backend
+  tags:
+    - ansible
+spec:
+  packageName: '@ansible/backstage-plugin-catalog-backend-module-apme'
+  dynamicArtifact: oci://APME_BACKEND_OCI
+  version: 2026.8.0
+  backstage:
+    role: backend-plugin-module
+    supportedVersions: 1.49.4
+  author: Red Hat Ansible
+  support: community
+  lifecycle: experimental
+  partOf:
+    - ansible-apme
+  appConfigExamples:
+    - title: Default configuration
+      content:
+        dynamicPlugins:
+          backend:
+            ansible.backstage-plugin-catalog-backend-module-apme: {}

@@ -14,6 +14,8 @@ images/
 rhdh-local/compose.portal.yaml
 rhdh-local/compose.portal.dev.yaml
 rhdh-local/compose.apme.dev.yaml
+rhdh-local/compose.portal.extensions.yaml
+rhdh-local/.registry/
 rhdh-local/configs/app-config/app-config.portal.yaml
 rhdh-local/configs/dynamic-plugins/dynamic-plugins.portal.yaml
 rhdh-local/configs/dynamic-plugins/dynamic-plugins.portal.dev.yaml
