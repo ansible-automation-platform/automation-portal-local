@@ -114,14 +114,16 @@ export function registerHubRoutes(app, { store, remotes, cache, env }) {
     'https://cloud.redhat.com',
   ];
 
-  function rewrite(body, req) {
-    const host = req?.headers?.host;
-    const proto = String(req?.headers?.['x-forwarded-proto'] || 'http').split(',')[0].trim() || 'http';
-    const requestBase = host ? `${proto}://${host}` : publicBase;
+  function rewrite(body) {
+    // Keep rewritten links (e.g. pagination `links.next`) root-relative —
+    // see hubClient.js `rewritePayload` doc comment. Absolute links here
+    // caused ansible-galaxy's v3 pagination to double the host when it
+    // prefixed `links.next` with its own configured server scheme+host
+    // (https://github.com/ansible/ansible/issues/63286-style bug).
     return rewritePayload(body, {
-      publicBase: requestBase,
+      publicBase,
       upstreamBases,
-      absolute: true,
+      absolute: false,
     });
   }
 
@@ -252,7 +254,7 @@ export function registerHubRoutes(app, { store, remotes, cache, env }) {
       }
       if (!isArtifact && ctype.includes('application/json')) {
         const body = await res.json();
-        reply.code(res.status).send(rewrite(body, req));
+        reply.code(res.status).send(rewrite(body));
         return;
       }
 
