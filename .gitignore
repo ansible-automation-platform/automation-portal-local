@@ -21,6 +21,7 @@ rhdh-local/configs/catalog/apme-register-git-repository/
 rhdh-local/local-plugins/portal/
 rhdh-local/local-plugins/portal-dev/
 rhdh-local/dynamic-plugins-root/
+rhdh-local/extensions-catalog/
 rhdh-local/.env
 rhdh-local/.portal-compose-mode
 

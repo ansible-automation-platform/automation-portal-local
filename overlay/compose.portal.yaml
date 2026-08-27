@@ -79,13 +79,14 @@ services:
         condition: service_healthy
     volumes:
       - ./configs/app-config/app-config.portal.yaml:/opt/app-root/src/configs/app-config/app-config.local.yaml:ro,z
-      # SELinux: named volume needs :Z or installer/rhdh get EACCES on /extensions
-      - extensions-catalog:/extensions:Z
+      # Bind-mount: named volume + :Z breaks install-dynamic-plugins on macOS Podman
+      # (docker-compose provider). :Z kept for SELinux on Fedora/RHEL bind mounts.
+      - ./extensions-catalog:/extensions:Z
 
   install-dynamic-plugins:
     volumes:
       - ./configs/dynamic-plugins/dynamic-plugins.portal.yaml:/opt/app-root/src/configs/dynamic-plugins/dynamic-plugins.override.yaml:ro,z
-      - extensions-catalog:/extensions:Z
+      - ./extensions-catalog:/extensions:Z
 
 volumes:
   portal-pgdata:

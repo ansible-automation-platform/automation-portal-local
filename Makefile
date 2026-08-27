@@ -464,7 +464,8 @@ _prep-install-root:
 _prep-dev-root: _prep-install-root
 
 _seed-extensions:
-	@mkdir -p "$(RHDH_DIR)/dynamic-plugins-root"
+	@mkdir -p "$(RHDH_DIR)/dynamic-plugins-root" "$(RHDH_DIR)/extensions-catalog"
+	@chmod -R a+rwX "$(RHDH_DIR)/extensions-catalog" 2>/dev/null || true
 	@printf '%s\n' \
 	  '# Prevent Extensions installer from GC-deleting portal plugins.' \
 	  'includes: []' \
@@ -521,5 +522,6 @@ _banner-apme:
 	else \
 	  echo "  APME Gateway:    http://localhost:8080  (make apme → tox -e up)"; \
 	  echo "  APME UI:         http://localhost:8081  (from APME pod)"; \
+	  echo "  Abbenay UI:      http://localhost:8787  (from APME pod)"; \
 	  echo "  RHDH→APME URL:   $(APME_BASE_URL)"; \
 	fi
