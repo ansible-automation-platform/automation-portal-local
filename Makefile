@@ -340,9 +340,6 @@ _overlays: _submodule
 	    "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
 	@cp "$(OVERLAY)/compose.portal.yaml" \
 	    "$(RHDH_DIR)/compose.portal.yaml"
-	@cp "$(OVERLAY)/prepare-and-install-dynamic-plugins.sh" \
-	    "$(RHDH_DIR)/prepare-and-install-dynamic-plugins.sh"
-	@chmod +x "$(RHDH_DIR)/prepare-and-install-dynamic-plugins.sh"
 
 _overlays-dev: _overlays
 	@cp "$(OVERLAY)/compose.portal.dev.yaml" \
