@@ -140,12 +140,13 @@ PY
     dests+=("$d")
   done
 
-  # Dedupe
-  local -A seen=()
-  local dest
+  # Dedupe (bash 3.2 — no associative arrays)
+  local dest seen_list=""
   for dest in "${dests[@]}"; do
-    [ -n "${seen[$dest]:-}" ] && continue
-    seen[$dest]=1
+    case ":$seen_list:" in
+      *":$dest:"*) continue ;;
+    esac
+    seen_list="${seen_list}:${dest}"
     _sync_one_dest "$src/dist-dynamic" "$dest"
   done
 }
