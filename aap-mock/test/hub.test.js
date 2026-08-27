@@ -199,6 +199,47 @@ describe('rewritePayload', () => {
       'http://localhost:8099/api/galaxy/v3/plugin/ansible/content/published/collections/index/ansible/controller/',
     );
   });
+
+  it('forces links.next/previous root-relative even when absolute is true', () => {
+    const out = rewritePayload(
+      {
+        links: {
+          first: 'https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/community/general/versions/?limit=1&offset=0',
+          previous: null,
+          next: 'https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/community/general/versions/?limit=1&offset=1',
+          last: 'https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/community/general/versions/?limit=1&offset=238',
+        },
+        data: [
+          {
+            version: '13.3.0',
+            href: 'https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/community/general/versions/13.3.0/',
+          },
+        ],
+      },
+      {
+        publicBase: 'http://host.containers.internal:8099',
+        upstreamBases: ['https://galaxy.ansible.com'],
+        absolute: true,
+      },
+    );
+    // Pagination links: root-relative (no scheme/host) — avoids ansible-core
+    // doubling the host when it prefixes links.next with its own server.
+    assert.equal(
+      out.links.next,
+      '/api/galaxy/v3/plugin/ansible/content/published/collections/index/community/general/versions/?limit=1&offset=1',
+    );
+    assert.equal(
+      out.links.first,
+      '/api/galaxy/v3/plugin/ansible/content/published/collections/index/community/general/versions/?limit=1&offset=0',
+    );
+    assert.equal(out.links.previous, null);
+    // Non-pagination hrefs stay absolute — ansible-galaxy fetches these
+    // directly with no base-URL resolution.
+    assert.equal(
+      out.data[0].href,
+      'http://host.containers.internal:8099/api/galaxy/v3/plugin/ansible/content/published/collections/index/community/general/versions/13.3.0/',
+    );
+  });
 });
 
 describe('resolveCollection cascade', () => {

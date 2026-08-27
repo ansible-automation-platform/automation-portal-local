@@ -27,6 +27,23 @@ SKIP_BUILD    ?= 0
 FORCE_EXPORT  ?= 0
 # Set DEV_PROMPT=0 to skip the interactive R/F/S menu after make dev.
 DEV_PROMPT    ?= 1
+# Set FRESH=1 to force-refresh every component: rebuild locally-built compose
+# images (aap-mock), re-export every plugin (implies FORCE_EXPORT=1), rebuild
+# and restart APME even if it's already reachable, and best-effort pull
+# upstream base images. Slower — use for "why is this still stale?" moments.
+FRESH         ?= 0
+ifeq ($(FRESH),1)
+  override FORCE_EXPORT := 1
+endif
+_FRESH_BUILD_FLAG := $(if $(filter 1,$(FRESH)),--build,)
+# Set WIPE=1 to additionally destroy persistent data volumes for a true clean
+# slate: RHDH's catalog Postgres volume (portal-pgdata — catalog entities,
+# including manually-registered Git Repositories, survive plain restarts and
+# even FRESH=1) and APME's Gateway DB/sessions/proxy-cache volumes (APME
+# project/scan history also survives plain `make apme` restarts). Composable
+# with FRESH=1 or standalone. Destructive: deletes ALL catalog/APME data, not
+# just entries from your current session.
+WIPE          ?= 0
 
 # ── Compose-profile resolution ──────────────────────────────────────
 # Profiles: mock (aap-mock). APME is external (make apme → tox -e up).
@@ -115,7 +132,14 @@ help: ## Show available targets
 	@printf '  SKIP_BUILD=1            make start: skip rebuild, use existing .tgz\n'
 	@printf '  FORCE_EXPORT=1          Rebuild all plugins (skip incremental export)\n'
 	@printf '  DEV_PROMPT=0            Skip interactive R/F/S menu after make dev\n'
-	@printf '  PORTAL_ONLY=1           No APME plugins; skip make apme (IAG / portal-only)\n\n'
+	@printf '  PORTAL_ONLY=1           No APME plugins; skip make apme (IAG / portal-only)\n'
+	@printf '  FRESH=1                 Force-refresh everything: rebuild local images\n'
+	@printf '                          (aap-mock), FORCE_EXPORT=1, rebuild+restart APME\n'
+	@printf '                          even if already up, best-effort pull base images\n'
+	@printf '  WIPE=1                  Destroy persistent data for a true clean slate:\n'
+	@printf '                          RHDH catalog DB (portal-pgdata) + APME Gateway\n'
+	@printf '                          DB/sessions/proxy-cache. Composable with FRESH=1.\n'
+	@printf '                          Destructive — deletes ALL catalog/APME data.\n\n'
 
 apme: ## Start APME (cd APME_REPO && tox -e up)
 	@[ -d "$(APME_REPO)" ] || { \
@@ -137,18 +161,18 @@ apme-down: ## Stop APME (cd APME_REPO && tox -e down)
 	@echo "Stopping APME via tox -e down in $(APME_REPO)…"
 	@cd "$(APME_REPO)" && tox -e down
 
-dev: check-plugin-parity _check-env _prereqs _stop-if-running _remove-legacy-apme _ensure-apme _submodule _overlays _overlays-dev _env-files _sync-template _export-plugins _seed-extensions _prep-dev-root _load-images ## Start DEV mode (mount dist-dynamic into RHDH)
+dev: check-plugin-parity _check-env _prereqs _wipe-data _stop-if-running _remove-legacy-apme _fresh-pull _ensure-apme _submodule _overlays _overlays-dev _env-files _sync-template _export-plugins _seed-extensions _prep-dev-root _load-images ## Start DEV mode (mount dist-dynamic into RHDH)
 	@echo "Starting services (DEV mounts)…"
-	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F_DEV) up -d
+	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F_DEV) up -d $(_FRESH_BUILD_FLAG)
 	@$(MAKE) --no-print-directory _banner-dev
 	@DEV_PROMPT="$(DEV_PROMPT)" "$(ROOT_DIR)/scripts/dev-prompt.sh"
 
 dev-prompt: ## Re-enter the interactive DEV menu (R/F/S) without restarting compose
 	@DEV_PROMPT=1 "$(ROOT_DIR)/scripts/dev-prompt.sh"
 
-start: check-plugin-parity _check-env _prereqs _stop-if-running _remove-legacy-apme _ensure-apme _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _prep-install-root _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
+start: check-plugin-parity _check-env _prereqs _wipe-data _stop-if-running _remove-legacy-apme _fresh-pull _ensure-apme _submodule _maybe-build-tarballs _overlays _overlays-tarball _env-files _sync-template _tarballs _seed-extensions _prep-install-root _load-images ## Build tarballs from PLUGIN_REPO + start (production-shaped)
 	@echo "Starting services…"
-	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F) up -d
+	@cd $(RHDH_DIR) && podman compose $(COMPOSE_F) up -d $(_FRESH_BUILD_FLAG)
 	@$(MAKE) --no-print-directory _banner
 
 check-plugin-parity: ## Fail if DEV vs tarball dynamic-plugins host contracts drift
@@ -239,7 +263,7 @@ status: ## Show running containers
 .PHONY: _check-env _prereqs _ensure-apme _remove-legacy-apme _stop-if-running _submodule \
         _overlays _overlays-dev _overlays-tarball _env-files _export-plugins _seed-extensions \
         _load-images _tarballs _sync-template _prep-dev-root _prep-install-root \
-        _build-tarballs _maybe-build-tarballs \
+        _build-tarballs _maybe-build-tarballs _fresh-pull _wipe-data \
         _banner _banner-dev _banner-apme
 
 _check-env:
@@ -296,9 +320,18 @@ _ensure-apme:
 	      ;; \
 	  esac; \
 	  PROBE=$$(printf '%s' "$$URL" | sed 's/host\.containers\.internal/127.0.0.1/g'); \
+	  case "$$URL" in \
+	    "$$DEFAULT_URL"|"http://127.0.0.1:8080"|"http://localhost:8080") IS_DEFAULT_URL=1 ;; \
+	    *) IS_DEFAULT_URL=0 ;; \
+	  esac; \
 	  if curl -sf --connect-timeout 2 --max-time 3 "$${PROBE%/}/docs" >/dev/null 2>&1; then \
-	    echo "APME Gateway already up at $${PROBE}"; \
-	  elif [ "$$URL" = "$$DEFAULT_URL" ] || [ "$$URL" = "http://127.0.0.1:8080" ] || [ "$$URL" = "http://localhost:8080" ]; then \
+	    if [ "$(FRESH)" = "1" ] && [ "$$IS_DEFAULT_URL" = "1" ]; then \
+	      echo "FRESH=1 — APME Gateway is up, but rebuilding/restarting anyway…"; \
+	      $(MAKE) --no-print-directory apme; \
+	    else \
+	      echo "APME Gateway already up at $${PROBE}"; \
+	    fi; \
+	  elif [ "$$IS_DEFAULT_URL" = "1" ]; then \
 	    echo "APME Gateway not reachable at $${PROBE} — starting via make apme…"; \
 	    $(MAKE) --no-print-directory apme; \
 	  else \
@@ -306,6 +339,22 @@ _ensure-apme:
 	    echo "  Start it yourself (make apme, or your remote Gateway), or unset APME_BASE_URL." >&2; \
 	  fi; \
 	fi
+
+# FRESH=1: best-effort pull of upstream base images (rhdh, postgres, lightspeed,
+# etc). Skips silently if the rhdh-local submodule/overlays aren't in place yet
+# (first-ever run) — _submodule/_overlays run later in the dev/start chain.
+_fresh-pull:
+	@if [ "$(FRESH)" != "1" ]; then exit 0; fi; \
+	if [ ! -f "$(RHDH_DIR)/compose.yaml" ]; then \
+	  echo "FRESH=1 — skipping base-image pull (rhdh-local not initialized yet)"; \
+	  exit 0; \
+	fi; \
+	echo "FRESH=1 — pulling upstream base images (best-effort)…"; \
+	cd $(RHDH_DIR) && \
+	if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	podman compose $(COMPOSE_F) pull --ignore-buildable 2>/dev/null \
+	  || podman compose $(COMPOSE_F) pull 2>/dev/null \
+	  || echo "  (pull skipped/failed for one or more images — continuing)"
 
 _stop-if-running:
 	@if [ -f "$(RHDH_DIR)/compose.portal.yaml" ]; then \
@@ -320,6 +369,27 @@ _stop-if-running:
 	      podman compose $(COMPOSE_F) down; \
 	    fi; \
 	  fi; \
+	fi
+
+# WIPE=1: destroy persistent data volumes for a true clean slate (see WIPE
+# variable comment above). Runs before _stop-if-running/_ensure-apme so both
+# see a genuinely empty state afterwards. No-op unless WIPE=1.
+_wipe-data:
+	@if [ "$(WIPE)" != "1" ]; then exit 0; fi; \
+	echo "WIPE=1 — destroying persistent data volumes for a clean slate…"; \
+	if [ -f "$(RHDH_DIR)/compose.portal.yaml" ]; then \
+	  echo "  Wiping RHDH catalog DB (portal-pgdata)…"; \
+	  ( cd $(RHDH_DIR) && \
+	    if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	    if [ -f compose.portal.dev.yaml ]; then \
+	      PLUGIN_REPO="$${PLUGIN_REPO:-}" podman compose $(COMPOSE_F_DEV) down -v; \
+	    else \
+	      podman compose $(COMPOSE_F) down -v; \
+	    fi ) 2>/dev/null || true; \
+	fi; \
+	if [ "$(PORTAL_ONLY)" != "1" ] && [ -d "$(APME_REPO)" ]; then \
+	  echo "  Wiping APME Gateway DB, sessions, and proxy cache…"; \
+	  ( cd "$(APME_REPO)" && bash containers/podman/down.sh --wipe ) || true; \
 	fi
 
 _submodule:
@@ -496,6 +566,9 @@ _banner:
 	else \
 	  echo "  Plugins:       rebuilt from $(PLUGIN_REPO)"; \
 	fi
+	@if [ "$(WIPE)" = "1" ]; then \
+	  echo "  WIPE=1:        catalog DB + APME data wiped — true clean slate"; \
+	fi
 	@echo ""
 	@echo "  View logs:     make logs"
 	@echo "  Stop:          make stop"
@@ -509,6 +582,12 @@ _banner-dev:
 	@echo "  Almost like AAP: http://localhost:8099"
 	@echo "  Login:           user / password  (Almost like AAP mock)"
 	@echo "  PLUGIN_REPO:     $(PLUGIN_REPO)"
+	@if [ "$(FRESH)" = "1" ]; then \
+	  echo "  FRESH=1:         local images rebuilt, plugins fully re-exported, APME refreshed"; \
+	fi
+	@if [ "$(WIPE)" = "1" ]; then \
+	  echo "  WIPE=1:          catalog DB + APME data wiped — true clean slate"; \
+	fi
 	@echo ""
 	@echo "  Interactive menu (after this banner):"
 	@echo "    [R] reload     [F] frontend     [S] stop     [Q] quit menu"

@@ -17,9 +17,19 @@ async function authHeaders(remote) {
 /**
  * Rewrite absolute upstream URLs/paths so clients keep talking to the mock.
  *
- * Prefer *relative* `/api/galaxy/...` paths so both the browser
- * (`localhost:8099`) and the APME pod (`host.containers.internal:8099`)
- * resolve downloads against their own galaxy-server base URL.
+ * Most rewritten URLs (download_url, resource href, artifact links) are made
+ * *absolute* against `publicBase` — ansible-galaxy fetches these directly via
+ * a raw HTTP request with no base-URL resolution, so a relative path fails
+ * with "unknown url type".
+ *
+ * The one deliberate exception: pagination continuation links under a
+ * `links` object (`links.next` / `previous` / `first` / `last`) are always
+ * forced root-relative, regardless of `absolute`. ansible-core's v3
+ * pagination prefixes `links.next` with its own configured server
+ * scheme+host before following it; if we hand back an already-absolute URL
+ * there, that prefixing doubles the host (see aap-mock hubProxy.js commit
+ * history / ansible/ansible#63286-style bug) and the follow-up request fails
+ * DNS resolution.
  */
 export function rewritePayload(value, { publicBase, upstreamBases, absolute = false }) {
   const bases = upstreamBases.map(b => b.replace(/\/$/, ''));
@@ -40,12 +50,12 @@ export function rewritePayload(value, { publicBase, upstreamBases, absolute = fa
     return p;
   }
 
-  function rewriteString(s) {
+  function rewriteString(s, useAbsolute) {
     let out = s;
     for (const base of bases) {
       if (out.startsWith(base)) {
         out = toPahPath(out.slice(base.length));
-        if (absolute && mock) out = `${mock}${out}`;
+        if (useAbsolute && mock) out = `${mock}${out}`;
         return out;
       }
     }
@@ -59,19 +69,21 @@ export function rewritePayload(value, { publicBase, upstreamBases, absolute = fa
       out.startsWith('/content/')
     ) {
       out = toPahPath(out);
-      if (absolute && mock) out = `${mock}${out}`;
+      if (useAbsolute && mock) out = `${mock}${out}`;
     }
     return out;
   }
 
-  function walk(node) {
+  // `insideLinks` sticks once true as we recurse into a `links` object's
+  // values, forcing relative rewriting for that whole subtree.
+  function walk(node, insideLinks = false) {
     if (node == null) return node;
-    if (typeof node === 'string') return rewriteString(node);
-    if (Array.isArray(node)) return node.map(walk);
+    if (typeof node === 'string') return rewriteString(node, insideLinks ? false : absolute);
+    if (Array.isArray(node)) return node.map(n => walk(n, insideLinks));
     if (typeof node === 'object') {
       const out = {};
       for (const [k, v] of Object.entries(node)) {
-        out[k] = walk(v);
+        out[k] = walk(v, insideLinks || k === 'links');
       }
       return out;
     }
