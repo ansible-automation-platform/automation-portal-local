@@ -56,6 +56,22 @@ podman compose -f compose.yaml -f compose.portal.yaml -f compose.portal.dev.yaml
 ```
 Or `make clean && make dev DEV_PROMPT=0` for a full restart.
 
+### `rhdh-plugins-installer` hangs at "Waiting for lock release"
+
+**Cause:** A previous `make dev` was interrupted (Ctrl+C) while `install-dynamic-plugins` was running. The installer leaves `dynamic-plugins-root/install-dynamic-plugins.lock` behind; the next run waits on that file forever.
+
+**Fix:** `make stop` then `make dev` again (recent Makefile clears the stale lock automatically). Manual:
+```bash
+rm -f rhdh-local/dynamic-plugins-root/install-dynamic-plugins.lock
+podman compose -f rhdh-local/compose.yaml -f rhdh-local/compose.portal.yaml \
+  -f rhdh-local/compose.portal.dev.yaml run --rm --no-deps install-dynamic-plugins
+```
+
+**Verify:** Installer logs should show `Created lock file` (not endless `Waiting for lock release`):
+```bash
+podman logs -f rhdh-plugins-installer
+```
+
 ### aap-mock container starts even with AAP_MOCK=0
 
 **Cause:** The `.env` file was not read by compose. The `make start` target copies `.env` values to `rhdh-local/.env` during setup — running compose directly bypasses this.

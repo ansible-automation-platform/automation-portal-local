@@ -169,7 +169,7 @@ stop: ## Stop Portal compose services (APME keeps running — use make apme-down
 
 restart: stop dev ## Restart DEV mode (stop + dev)
 
-reload: _prereqs _export-plugins ## Re-export changed plugins, reinstall, restart rhdh
+reload: _prereqs _export-plugins _clear-installer-lock ## Re-export changed plugins, reinstall, restart rhdh
 	@echo "Re-running install-dynamic-plugins…"
 	@cd $(RHDH_DIR) && PLUGIN_REPO="$(PLUGIN_REPO)" \
 	  podman compose $(COMPOSE_F_DEV) run --rm --no-deps install-dynamic-plugins
@@ -238,7 +238,7 @@ status: ## Show running containers
 # =====================================================================
 .PHONY: _check-env _prereqs _ensure-apme _remove-legacy-apme _stop-if-running _submodule \
         _overlays _overlays-dev _overlays-tarball _env-files _export-plugins _seed-extensions \
-        _load-images _tarballs _sync-template _prep-dev-root _prep-install-root \
+        _load-images _tarballs _sync-template _clear-installer-lock _prep-dev-root _prep-install-root \
         _build-tarballs _maybe-build-tarballs \
         _banner _banner-dev _banner-apme
 
@@ -319,6 +319,7 @@ _stop-if-running:
 	    else \
 	      podman compose $(COMPOSE_F) down; \
 	    fi; \
+	    $(MAKE) --no-print-directory _clear-installer-lock; \
 	  fi; \
 	fi
 
@@ -339,6 +340,9 @@ _overlays: _submodule
 	    "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
 	@cp "$(OVERLAY)/compose.portal.yaml" \
 	    "$(RHDH_DIR)/compose.portal.yaml"
+	@cp "$(OVERLAY)/prepare-and-install-dynamic-plugins.sh" \
+	    "$(RHDH_DIR)/prepare-and-install-dynamic-plugins.sh"
+	@chmod +x "$(RHDH_DIR)/prepare-and-install-dynamic-plugins.sh"
 
 _overlays-dev: _overlays
 	@cp "$(OVERLAY)/compose.portal.dev.yaml" \
@@ -438,6 +442,19 @@ _tarballs:
 	  exit 1; \
 	fi
 
+# Remove stale install-dynamic-plugins.lock left when a prior installer was killed
+# (Ctrl+C during make dev). Upstream install-dynamic-plugins.py waits forever.
+_clear-installer-lock:
+	@if [ -f "$(RHDH_DIR)/dynamic-plugins-root/install-dynamic-plugins.lock" ]; then \
+	  echo "Removing stale install-dynamic-plugins.lock…"; \
+	  rm -f "$(RHDH_DIR)/dynamic-plugins-root/install-dynamic-plugins.lock"; \
+	fi
+	@VOL=$$(podman volume ls -q 2>/dev/null | grep -E '(^|_)dynamic-plugins-root$$' | head -1 || true); \
+	if [ -n "$$VOL" ]; then \
+	  podman run --rm -v "$$VOL:/dynamic-plugins-root" alpine \
+	    sh -c 'rm -f /dynamic-plugins-root/install-dynamic-plugins.lock' 2>/dev/null || true; \
+	fi
+
 # Wipe previously installed portal plugins so install-dynamic-plugins cannot
 # treat same name@version as already_installed.
 #
@@ -447,7 +464,7 @@ _tarballs:
 #   rhdh-local/dynamic-plugins-root
 # Clearing only the host dir does nothing for make start — the installer keeps
 # skipping rebuilt .tgz files and you lose Overview Quality / README fixes.
-_prep-install-root:
+_prep-install-root: _clear-installer-lock
 	@mkdir -p "$(RHDH_DIR)/dynamic-plugins-root"
 	@echo "Clearing host dynamic-plugins-root portal plugin installs…"
 	@find "$(RHDH_DIR)/dynamic-plugins-root" -maxdepth 1 -mindepth 1 \
