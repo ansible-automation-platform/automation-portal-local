@@ -15,16 +15,8 @@ services:
     build:
       context: ../aap-mock
     image: localhost/aap-mock:local
-    # Host networking (not the default netavark rootless bridge) — outbound
-    # fetches to real upstream Galaxy/Hub artifact CDNs (e.g. collection
-    # tarballs redirected off-CDN to S3-backed storage) were reliably
-    # ETIMEDOUT through the bridge/NAT layer on high-latency paths, while the
-    # exact same request succeeds instantly with --network=host. Only
-    # low-latency destinations (e.g. Cloudflare-fronted galaxy.ansible.com
-    # metadata) worked through the bridge, which is what made this so hard to
-    # spot. `ports:` is dropped since it's a no-op (and invalid) under
-    # network_mode: host — the container binds directly to the host's 8099.
-    network_mode: host
+    ports:
+      - "8099:8099"
     environment:
       PORT: "8099"
       AAP_MOCK_USERNAME: ${AAP_MOCK_USERNAME:-user}
