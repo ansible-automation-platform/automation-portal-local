@@ -5,7 +5,6 @@ ansible:
     baseUrl: ${APME_BASE_URL}
     checkSSL: false
     enabled: true
-    enableAi: true
     mockMode: false
   creatorService:
     baseUrl: 127.0.0.1
