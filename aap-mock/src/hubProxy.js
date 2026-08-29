@@ -6,6 +6,37 @@ import { rewritePayload, upstreamFetch } from './hubClient.js';
 import { resolveCollection } from './hubResolve.js';
 import { getPahRepositoryNames, upstreamContentRepo } from './hubRemotes.js';
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry only on thrown network-level errors (DNS/connect/reset/timeout) —
+ * never on a successful fetch that merely returned a non-2xx status, since
+ * that's a legitimate upstream response, not a transport failure.
+ *
+ * Some collection artifacts redirect off-CDN to per-collection storage
+ * (e.g. S3-backed buckets) reachable over long, congested international
+ * paths — connectivity there is intermittently flaky rather than reliably
+ * up or down, and a single failed attempt (Node's Happy-Eyeballs already
+ * takes several seconds to exhaust all resolved addresses) says little
+ * about the next one. `retries = 4` gives real windows of flakiness a
+ * meaningful chance to pass before giving up to the caller's own outer
+ * retry loop.
+ */
+async function fetchWithRetry(url, opts, { retries = 4, baseDelayMs = 300 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fetch(url, opts);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await sleep(baseDelayMs * 2 ** attempt);
+    }
+  }
+  throw lastErr;
+}
+
 function galaxyPathFromPah(urlPath) {
   // /api/galaxy/v3/... -> /api/v3/...
   // /api/galaxy/pulp/... -> /api/pulp/...
@@ -115,6 +146,12 @@ export function registerHubRoutes(app, { store, remotes, cache, env }) {
   ];
 
   function rewrite(body, req) {
+    // Absolute + host-correct for the caller (browser at localhost:8099 vs
+    // the APME pod at host.containers.internal:8099) — required for
+    // download_url / resource href fields, which ansible-galaxy fetches
+    // directly with no base-URL resolution. Pagination `links.*` is forced
+    // root-relative inside rewritePayload regardless of this flag — see its
+    // doc comment in hubClient.js.
     const host = req?.headers?.host;
     const proto = String(req?.headers?.['x-forwarded-proto'] || 'http').split(',')[0].trim() || 'http';
     const requestBase = host ? `${proto}://${host}` : publicBase;
@@ -234,7 +271,7 @@ export function registerHubRoutes(app, { store, remotes, cache, env }) {
             : {};
       // Artifacts: always Accept */* — Hub 302→S3; JSON Accept is for metadata only.
       const isArtifact = Boolean(parseArtifactName(upstreamPath));
-      const res = await fetch(url, {
+      const res = await fetchWithRetry(url, {
         method: optsMethod(req),
         headers: {
           Accept: isArtifact ? '*/*' : req.headers.accept || '*/*',

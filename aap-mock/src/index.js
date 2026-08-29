@@ -1,3 +1,4 @@
+import dns from 'node:dns';
 import Fastify from 'fastify';
 import formbody from '@fastify/formbody';
 import { createStore } from './store.js';
@@ -8,6 +9,14 @@ import {
   createHubAccessTokenProvider,
 } from './hubAuth.js';
 import { registerHubRoutes } from './hubProxy.js';
+
+// Rootless Podman networking (slirp4netns/pasta) commonly advertises IPv6
+// routes that go nowhere (galaxy.ansible.com/Cloudflare resolve AAAA records
+// but the container gets ENETUNREACH on them). Node's default DNS ordering
+// can still race/attempt those dead addresses, which under concurrent load
+// surfaces as `AggregateError [ETIMEDOUT]` fetch failures. Preferring IPv4
+// results sidesteps the dead IPv6 path entirely.
+dns.setDefaultResultOrder('ipv4first');
 
 const env = process.env;
 const store = createStore(env);
