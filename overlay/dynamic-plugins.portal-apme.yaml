@@ -101,7 +101,7 @@ plugins:
               self-service.create.tasks:
                 priority: 85
               self-service.repositories.catalog:
-                priority: 60
+                priority: 30
               self-service.collections:
                 priority: 50
               self-service.ee:
