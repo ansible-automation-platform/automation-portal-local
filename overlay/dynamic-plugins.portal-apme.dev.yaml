@@ -39,6 +39,13 @@ plugins:
               - importName: AAPApis
               - importName: AapAuthApi
               - importName: EEBuildApis
+            appIcons:
+              - name: contentIcon
+                importName: ContentIcon
+              - name: gitHubIcon
+                importName: GitHubIcon
+              - name: contentQualityIcon
+                importName: ContentQualityIcon
             scaffolderFieldExtensions:
               - importName: AAPTokenFieldExtension
               - importName: AAPResourcePickerExtension
@@ -52,6 +59,8 @@ plugins:
               - importName: ScmSelectorFieldExtension
               - importName: GitHubRepoUrlFieldExtension
             dynamicRoutes:
+              - importName: ContentQualityPage
+                path: /self-service/content-quality
               - importName: LandingPage
                 path: /
               - importName: SelfServicePage
@@ -78,10 +87,23 @@ plugins:
                 path: /self-service/collections/*
               - importName: GitRepositoriesPage
                 path: /self-service/repositories
+              - importName: GitRepositoriesPage
+                path: /self-service/repositories/catalog
                 menuItem:
-                  importName: GitRepositoriesSidebarItem
+                  importName: ContentSidebarGroup
               - importName: GitRepositoriesPage
                 path: /self-service/repositories/*
+            menuItems:
+              self-service:
+                priority: 90
+              self-service.create.tasks:
+                priority: 85
+              self-service.repositories.catalog:
+                priority: 30
+              self-service.collections:
+                priority: 50
+              self-service.ee:
+                priority: 40
             mountPoints:
               - mountPoint: application/listener
                 importName: LocationListener
