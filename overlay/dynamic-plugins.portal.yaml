@@ -94,6 +94,33 @@ plugins:
                 config:
                   priority: 100
 
+  # ── Automation content management (own repo: automation-content-plugins) ──
+
+  # Catalog provider: discovers execution environments and collections from any
+  # OCI-compliant registry and emits them as catalog entities.
+  - package: ./local-plugins/portal/ansible-plugin-catalog-backend-module-automation-content-dynamic-0.1.0.tgz
+    disabled: false
+
+  # Content API: discovery, documentation and requirements resolution.
+  - package: ./local-plugins/portal/ansible-plugin-automation-content-backend-dynamic-0.1.0.tgz
+    disabled: false
+
+  # Content UI. The mount path is configuration, not code — the plugin declares a
+  # route ref with no path, and this block decides where it lands.
+  - package: ./local-plugins/portal/ansible-plugin-automation-content-dynamic-0.1.0.tgz
+    disabled: false
+    pluginConfig:
+      dynamicPlugins:
+        frontend:
+          ansible.plugin-automation-content:
+            dynamicRoutes:
+              - importName: AutomationContentPage
+                path: /automation-content
+                menuItem:
+                  importName: AutomationContentSidebarItem
+              - importName: AutomationContentPage
+                path: /automation-content/*
+
   # Auth backend (RHAAP OAuth)
   - package: ./local-plugins/portal/ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-2.2.5.tgz
     disabled: false

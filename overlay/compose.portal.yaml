@@ -72,8 +72,14 @@ services:
       ENABLE_AUTH_PROVIDER_MODULE_OVERRIDE: 'true'
       APME_BASE_URL: ${APME_BASE_URL:-http://host.containers.internal:8080}
       AAP_PUBLIC_URL: ${AAP_PUBLIC_URL:-http://localhost:8099}
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
+    # No extra_hosts mapping for host.containers.internal.
+    #
+    # Podman resolves that name natively. Mapping it to `host-gateway` additionally
+    # fails under the external docker-compose provider, which cannot determine the
+    # gateway address and aborts container creation with "host containers internal IP
+    # address is empty". On Docker, add the mapping back:
+    #   extra_hosts:
+    #     - "host.containers.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

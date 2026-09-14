@@ -17,6 +17,10 @@ OVERLAY   := $(ROOT_DIR)/overlay
 
 # ── Defaults ─────────────────────────────────────────────────────────
 PLUGIN_REPO   ?= $(HOME)/github/ansible-backstage-plugins
+# Content management plugins live in their own repository. Set CONTENT_PLUGINS_ENABLED=0
+# to build the portal without them.
+CONTENT_PLUGIN_REPO    ?= $(HOME)/Documents/projects/cms/github/automation-content-plugins
+CONTENT_PLUGINS_ENABLED ?= 1
 APME_REPO     ?= $(HOME)/github/apme
 AAP_MOCK      ?= 1
 PORTAL_ONLY   ?= 0
@@ -93,6 +97,9 @@ _PORTAL_PLUGINS := auth-backend-module-rhaap-provider \
 
 # APME plugins (included only when APME is active)
 _APME_PLUGINS := backstage-apme catalog-backend-module-apme
+_CONTENT_PLUGINS := automation-content \
+                    automation-content-backend \
+                    catalog-backend-module-automation-content
 
 ifeq ($(PORTAL_ONLY),1)
   PLUGINS ?= $(_PORTAL_PLUGINS)
@@ -472,7 +479,24 @@ _env-files:
 	  echo "$$pair" >> "$(RHDH_DIR)/.env"; \
 	done
 
-_build-tarballs: _export-plugins
+_content-tarballs:
+	@if [ "$(CONTENT_PLUGINS_ENABLED)" = "1" ]; then \
+	  if [ -d "$(CONTENT_PLUGIN_REPO)" ]; then \
+	    CONTENT_PLUGIN_REPO="$(CONTENT_PLUGIN_REPO)" \
+	    CONTENT_PLUGINS="$(_CONTENT_PLUGINS)" \
+	    DEST="$(ROOT_DIR)/local-plugins/portal" \
+	    FORCE_EXPORT="$(FORCE_EXPORT)" \
+	    "$(ROOT_DIR)/scripts/build-content-plugins.sh"; \
+	  else \
+	    echo "NOTE: CONTENT_PLUGIN_REPO not found ($(CONTENT_PLUGIN_REPO)); skipping content plugins."; \
+	  fi; \
+	else \
+	  echo "CONTENT_PLUGINS_ENABLED=0 — skipping content management plugins."; \
+	fi
+
+build-content-plugins: _content-tarballs ## Export + pack the content management plugins only
+
+_build-tarballs: _export-plugins _content-tarballs
 	@command -v npm >/dev/null || { echo "ERROR: npm required to pack plugin tarballs"; exit 1; }
 	@echo "=== Pack portal plugin tarballs ==="
 	@$(ROOT_DIR)/scripts/pack-portal-plugins.sh \

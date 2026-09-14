@@ -113,6 +113,28 @@ catalog:
   processingInterval:
     minutes: 30
   providers:
+    # Content management: OCI registries are data, so onboarding one is a configuration
+    # change and never a code change. Capabilities are probed per registry and features
+    # degrade to match, so a minimal registry still works.
+    automationContent:
+      owner: group:default/ansible
+      registries:
+        - name: local-quay
+          url: ${CONTENT_REGISTRY_URL}
+          # Referrers are unavailable on this Quay; the provider falls back to the
+          # sha256- tag convention defined by the OCI spec, automatically.
+          repositories:
+            - demo/network-ee
+          insecure: true
+          # Quay advertises its token endpoint on its own configured hostname, which
+          # from inside the portal container points at the container itself. Rewriting
+          # the realm host to the configured registry host makes the exchange
+          # reachable. Opt-in, because it changes where credentials are sent.
+          rewriteAuthRealmHost: true
+          auth:
+            type: basic
+            username: ${CONTENT_REGISTRY_USERNAME}
+            password: ${CONTENT_REGISTRY_PASSWORD}
     rhaap:
       development:
         multiOrgEnabled: true
