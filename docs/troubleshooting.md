@@ -62,6 +62,22 @@ Or `make clean && make dev DEV_PROMPT=0` for a full restart.
 
 **Fix:** Always use `make start` or `make dev`, not raw `podman compose up`.
 
+### Scan stuck ~16% / galaxy-proxy 502 on `/wheels/...`
+
+**Symptom:** `apme-pod-galaxy-proxy` logs show `ansible-galaxy collection download failed (rc=1)` and hub hosts like `portal_hub_*@aap-mock:8099`.
+
+**Cause:** `AAP_HOST_URL` points at `http://aap-mock:8099` (compose DNS). The **host APME pod** started by `make apme` is outside that network and cannot resolve `aap-mock`, so wheel builds return 502.
+
+**Fix:** Set `AAP_HOST_URL` to a URL reachable from both RHDH and the APME pod (see `.env.example`, typically `http://host.containers.internal:8099` on Linux Podman with `host-gateway`). Run `make dev` to refresh `rhdh-local/.env`, restart `rhdh` if needed, and re-run the scan. Progress may sit around ~16% while collections download (minutes); that is not always a failure.
+
+### galaxy-proxy loops on `501 Not Implemented` for `/api/v3/.../versions/`
+
+**Symptom:** Logs repeat `GET …/api/v3/plugin/.../versions/` with **501** against aap-mock (path lacks `/api/galaxy/`).
+
+**Cause:** aap-mock serves Galaxy plugin APIs under `/api/galaxy/v3/`. Older galaxy-proxy builds requested bare `/api/v3/…`, which hits aap-mock’s catch-all 501 handler.
+
+**Fix:** Upgrade to an `apme` release that includes the galaxy-proxy path fix, rebuild images, and recreate the pod (`tox -e down && tox -e up` in `APME_REPO`).
+
 ### Collections catalog empty / APME cannot download collections
 
 **Cause:** aap-mock uses **on-demand resolve + learned cache**. The catalog only lists collections that have been pulled (or searched by `namespace`+`name`). It does not index all of Galaxy.
