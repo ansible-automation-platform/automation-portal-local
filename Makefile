@@ -279,6 +279,10 @@ _check-env:
 	  echo "WARNING: APME_BASE_URL still points at compose hostname apme-gateway." >&2; \
 	  echo "  Unset it (default: http://host.containers.internal:8080) or set a host Gateway URL." >&2; \
 	fi
+	@if grep -qE '^AAP_HOST_URL=.*aap-mock' "$(ROOT_DIR)/.env" 2>/dev/null; then \
+	  echo "WARNING: AAP_HOST_URL uses compose DNS name aap-mock." >&2; \
+	  echo "  The host APME pod (make apme) cannot resolve it — use a host gateway URL from .env.example." >&2; \
+	fi
 	@if [ -f "$(ROOT_DIR)/.env-abbenay" ]; then \
 	  echo "NOTE: .env-abbenay is unused. Put Abbenay keys in APME_REPO/containers/abbenay/.env"; \
 	fi
