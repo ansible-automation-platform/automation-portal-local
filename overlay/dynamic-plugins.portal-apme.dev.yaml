@@ -87,8 +87,6 @@ plugins:
                 path: /self-service/collections/*
               - importName: GitRepositoriesPage
                 path: /self-service/repositories
-              - importName: GitRepositoriesPage
-                path: /self-service/repositories/catalog
                 menuItem:
                   importName: ContentSidebarGroup
               - importName: GitRepositoriesPage
@@ -98,7 +96,7 @@ plugins:
                 priority: 90
               self-service.create.tasks:
                 priority: 85
-              self-service.repositories.catalog:
+              self-service.repositories:
                 priority: 30
               self-service.collections:
                 priority: 50
