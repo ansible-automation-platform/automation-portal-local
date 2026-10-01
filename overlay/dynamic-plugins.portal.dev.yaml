@@ -1,16 +1,65 @@
-# Portal + APME Dynamic Plugins — DEV (live dist-dynamic via local-plugins mounts)
-#
-# package paths point at bind-mounted dist-dynamic trees under
-# local-plugins/portal-dev/ (see compose.portal.dev.yaml).
-# No .tgz / OCI packaging.
-#
-# ./scripts/start-dev.sh → ./scripts/reload-dev.sh
+# Portal dynamic plugins — DEV (RHDH 2.1 / NFS)
+# Bind-mount dist-dynamic under local-plugins/portal-dev/ (compose.portal.dev.yaml).
+# Aligned with rhdh-local/configs/dynamic-plugins/dynamic-plugins.yaml (RHAAP block).
 
 includes:
   - dynamic-plugins.default.yaml
+  - /dynamic-plugins-root/dynamic-plugins.extensions.yaml
 
 plugins:
-  - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
+  - package: >-
+      oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-auth-backend-module-guest-provider:bs_1.52.0__0.2.20
+    disabled: false
+
+  - package: ref://backstage-community-plugin-tech-radar
+    disabled: false
+
+  - package: ref://backstage-community-plugin-rbac
+    disabled: false
+
+  - package: >-
+      oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-community-plugin-quay-backend:bs_1.52.0__1.17.0
+    disabled: true
+
+  - package: >-
+      oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-community-plugin-quay:bs_1.52.0__1.37.1
+    disabled: true
+
+  - package: ref://backstage-plugin-scaffolder-backend-module-github
+    disabled: false
+
+  - package: ref://red-hat-developer-hub-backstage-plugin-catalog-backend-module-extensions
+    disabled: false
+
+  - package: ref://red-hat-developer-hub-backstage-plugin-extensions
+    disabled: false
+
+  - package: ref://red-hat-developer-hub-backstage-plugin-extensions-backend
+    disabled: false
+    pluginConfig:
+      extensions:
+        installation:
+          enabled: true
+          saveToSingleFile:
+            file: /opt/app-root/src/dynamic-plugins-root/dynamic-plugins.extensions.yaml
+
+  - package: ref://red-hat-developer-hub-backstage-plugin-intelligent-assistant
+    disabled: false
+
+  - package: ref://red-hat-developer-hub-backstage-plugin-intelligent-assistant-backend
+    disabled: false
+
+  - package: ref://red-hat-developer-hub-backstage-plugin-app-auth
+    disabled: true
+
+  - package: ./local-plugins/portal-dev/rhaap-app-auth
+    disabled: false
+
+  - package: ./local-plugins/portal-dev/auth-backend-module-rhaap-provider
+    disabled: false
+    pluginConfig: {}
+
+  - package: ./local-plugins/portal-dev/catalog-backend-module-rhaap
     disabled: false
 
   - package: ./local-plugins/portal-dev/scaffolder-backend-module-backstage-rhaap
@@ -20,25 +69,16 @@ plugins:
         backend:
           ansible.plugin-scaffolder-backend-module-backstage-rhaap:
 
-  - package: ./local-plugins/portal-dev/catalog-backend-module-rhaap
-    disabled: false
-
   - package: ./local-plugins/portal-dev/self-service
     disabled: false
     pluginConfig:
       dynamicPlugins:
         frontend:
           ansible.plugin-backstage-self-service:
-            signInPage:
-              importName: SignInPage
             providerSettings:
               - title: Almost like AAP
                 description: Sign in with local mock (user / password)
                 provider: ansible.auth.rhaap
-            apiFactories:
-              - importName: AAPApis
-              - importName: AapAuthApi
-              - importName: EEBuildApis
             scaffolderFieldExtensions:
               - importName: AAPTokenFieldExtension
               - importName: AAPResourcePickerExtension
@@ -92,56 +132,24 @@ plugins:
                 config:
                   priority: 100
 
-  - package: ./local-plugins/portal-dev/auth-backend-module-rhaap-provider
-    disabled: false
-    pluginConfig: {}
-
-  - package: >-
-      oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-auth-backend-module-github-provider:bs_1.49.4__0.5.1!backstage-plugin-auth-backend-module-github-provider
+  - package: ref://backstage-plugin-signals-backend
     disabled: false
 
-  - package: >-
-      oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-auth-backend-module-gitlab-provider:bs_1.49.4__0.4.1!backstage-plugin-auth-backend-module-gitlab-provider
+  - package: ref://backstage-plugin-signals
     disabled: false
-
-  - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic
-    disabled: false
-
-  - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-gitlab-dynamic
-    disabled: false
-
-  # APME frontend — set disabled: false when APME plugins are in PLUGIN_REPO
-  - package: ./local-plugins/portal-dev/backstage-apme
-    disabled: true
     pluginConfig:
       dynamicPlugins:
         frontend:
-          ansible.plugin-backstage-apme:
-            apiFactories:
-              - importName: apmeApiFactory
-              - importName: gitRepositoriesExtensionsApiFactory
-            entityTabs:
-              - path: /apme
-                title: Quality
-                mountPoint: entity.page.apme
-            mountPoints:
-              - mountPoint: entity.page.apme/cards
-                importName: ApmeEntityTab
-                config:
-                  layout:
-                    gridColumn: '1 / -1'
-                  if:
-                    allOf:
-                      - isKind: component
-                      - isType: git-repository
+          backstage.plugin-signals: {}
 
-  # APME backend — set disabled: false when APME plugins are in PLUGIN_REPO
-  - package: ./local-plugins/portal-dev/catalog-backend-module-apme
-    disabled: true
-    pluginConfig:
-      dynamicPlugins:
-        backend:
-          ansible.backstage-plugin-catalog-backend-module-apme: {}
+  - package: ref://backstage-plugin-auth-backend-module-github-provider
+    disabled: false
+
+  - package: ref://backstage-plugin-auth-backend-module-gitlab-provider
+    disabled: false
+
+  - package: ref://backstage-plugin-scaffolder-backend-module-gitlab
+    disabled: false
 
   - package: ./dynamic-plugins/dist/backstage-plugin-techdocs
     disabled: true
@@ -158,8 +166,6 @@ plugins:
   - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-dynamic-home-page
     disabled: true
   - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-marketplace
-    disabled: true
-  - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-extensions
     disabled: true
   - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-global-floating-action-button
     disabled: true

@@ -13,7 +13,12 @@ elif [[ -z "${PLUGIN_REPO:-}" ]]; then
 fi
 export PLUGIN_REPO
 
-PLUGINS="${SYNC_DEV_PLUGINS:-auth-backend-module-rhaap-provider catalog-backend-module-rhaap self-service scaffolder-backend-module-backstage-rhaap backstage-apme catalog-backend-module-apme}"
+if [[ -n "${SYNC_DEV_PLUGINS:-}" ]]; then
+  PLUGINS="$SYNC_DEV_PLUGINS"
+else
+  # shellcheck disable=SC2207
+  PLUGINS="$(resolve_portal_plugins "$PLUGIN_REPO")"
+fi
 export PLUGINS
 export FORCE_EXPORT="${FORCE_EXPORT:-0}"
 

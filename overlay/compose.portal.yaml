@@ -71,6 +71,7 @@ services:
     environment:
       ENABLE_AUTH_PROVIDER_MODULE_OVERRIDE: 'true'
       APME_BASE_URL: ${APME_BASE_URL:-http://host.containers.internal:8080}
+      APME_ENABLED: ${APME_ENABLED:-false}
       AAP_PUBLIC_URL: ${AAP_PUBLIC_URL:-http://localhost:8099}
     extra_hosts:
       - "host.containers.internal:host-gateway"

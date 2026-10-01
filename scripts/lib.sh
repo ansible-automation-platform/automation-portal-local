@@ -5,6 +5,34 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Space-separated portal core plugins (no APME).
+PORTAL_CORE_PLUGINS=(
+  auth-backend-module-rhaap-provider
+  catalog-backend-module-rhaap
+  self-service
+  scaffolder-backend-module-backstage-rhaap
+  rhaap-app-auth
+)
+
+APME_PLUGIN_DIRS=(
+  backstage-apme
+  catalog-backend-module-apme
+)
+
+apme_plugins_in_repo() {
+  local repo="${1:-}"
+  [[ -n "$repo" && -f "$repo/plugins/backstage-apme/package.json" ]]
+}
+
+resolve_portal_plugins() {
+  local repo="${1:-}"
+  local plugins=("${PORTAL_CORE_PLUGINS[@]}")
+  if apme_plugins_in_repo "$repo"; then
+    plugins+=("${APME_PLUGIN_DIRS[@]}")
+  fi
+  echo "${plugins[@]}"
+}
+
 resolve_plugin_repo() {
   if [[ -f "$ROOT_DIR/.env" ]]; then
     set -a

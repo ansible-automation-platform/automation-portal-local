@@ -36,6 +36,9 @@ deps_for() {
     self-service)
       echo "backstage-rhaap-common"
       ;;
+    rhaap-app-auth)
+      echo "self-service backstage-rhaap-common"
+      ;;
     backstage-apme)
       echo "backstage-apme-common backstage-rhaap-common"
       ;;

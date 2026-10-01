@@ -18,6 +18,8 @@ OVERLAY   := $(ROOT_DIR)/overlay
 # ── Defaults ─────────────────────────────────────────────────────────
 PLUGIN_REPO   ?= $(HOME)/github/ansible-backstage-plugins
 APME_REPO     ?= $(HOME)/github/apme
+# ref:// plugins in portal overlays resolve against this index (RHDH 2.1 → :next).
+CATALOG_INDEX_IMAGE ?= quay.io/rhdh/plugin-catalog-index:next
 AAP_MOCK      ?= 1
 PORTAL_ONLY   ?= 0
 APME_BASE_URL ?=
@@ -44,6 +46,15 @@ _FRESH_BUILD_FLAG := $(if $(filter 1,$(FRESH)),--build,)
 # with FRESH=1 or standalone. Destructive: deletes ALL catalog/APME data, not
 # just entries from your current session.
 WIPE          ?= 0
+
+# Auto portal-only when PLUGIN_REPO has no APME plugins (e.g. ansible-backstage-plugins main).
+_APME_IN_PLUGIN_REPO := $(wildcard $(PLUGIN_REPO)/plugins/backstage-apme/package.json)
+ifeq ($(_APME_IN_PLUGIN_REPO),)
+  ifeq ($(filter 1 true yes on,$(shell echo '$(PORTAL_ONLY)' | tr '[:upper:]' '[:lower:]')),)
+    $(info NOTE: PLUGIN_REPO has no APME plugins — using PORTAL_ONLY=1)
+    override PORTAL_ONLY := 1
+  endif
+endif
 
 # ── Compose-profile resolution ──────────────────────────────────────
 # Profiles: mock (aap-mock). APME is external (make apme → tox -e up).
@@ -75,7 +86,13 @@ endif
 
 COMPOSE_PROFILES := $(shell echo '$(_PROFILES)' | tr ' ' ',')
 
-export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO APME_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK PORTAL_ONLY
+ifeq ($(PORTAL_ONLY),1)
+  export APME_ENABLED := false
+else
+  export APME_ENABLED := true
+endif
+
+export COMPOSE_PROFILES APME_BASE_URL APME_ENABLED PLUGIN_REPO APME_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK PORTAL_ONLY CATALOG_INDEX_IMAGE
 
 # ── Compose file sets ────────────────────────────────────────────────
 COMPOSE_F     := -f compose.yaml -f compose.portal.yaml
@@ -286,6 +303,13 @@ _check-env:
 	@if [ -f "$(ROOT_DIR)/.env-abbenay" ]; then \
 	  echo "NOTE: .env-abbenay is unused. Put Abbenay keys in APME_REPO/containers/abbenay/.env"; \
 	fi
+	@if [ ! -f "$(PLUGIN_REPO)/plugins/backstage-apme/package.json" ]; then \
+	  if grep -qE '^PORTAL_ONLY=(0|false|no|off)' "$(ROOT_DIR)/.env" 2>/dev/null; then \
+	    echo "ERROR: PORTAL_ONLY=0 but PLUGIN_REPO has no backstage-apme plugin." >&2; \
+	    echo "  Use a branch with APME plugins, or set PORTAL_ONLY=1 / remove PORTAL_ONLY from .env (auto-detect)." >&2; \
+	    exit 1; \
+	  fi; \
+	fi
 
 _prereqs:
 	@command -v podman >/dev/null || { echo "ERROR: podman is required."; exit 1; }
@@ -409,8 +433,10 @@ _overlays: _submodule
 	  "$(RHDH_DIR)/configs/catalog" \
 	  "$(RHDH_DIR)/local-plugins/portal" \
 	  "$(RHDH_DIR)/local-plugins/portal-dev"
-	@cp "$(OVERLAY)/app-config.portal.yaml" \
-	    "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
+	@chmod +x "$(ROOT_DIR)/scripts/render-app-config-portal.sh"
+	@"$(ROOT_DIR)/scripts/render-app-config-portal.sh" "$(PORTAL_ONLY)" \
+	  "$(OVERLAY)/app-config.portal.yaml" \
+	  "$(RHDH_DIR)/configs/app-config/app-config.portal.yaml"
 	@cp "$(OVERLAY)/compose.portal.yaml" \
 	    "$(RHDH_DIR)/compose.portal.yaml"
 
@@ -469,7 +495,9 @@ _env-files:
 	for pair in \
 	  "COMPOSE_PROFILES=$(COMPOSE_PROFILES)" \
 	  "APME_BASE_URL=$(APME_BASE_URL)" \
-	  "PLUGIN_REPO=$(PLUGIN_REPO)"; do \
+	  "APME_ENABLED=$(APME_ENABLED)" \
+	  "PLUGIN_REPO=$(PLUGIN_REPO)" \
+	  "CATALOG_INDEX_IMAGE=$(CATALOG_INDEX_IMAGE)"; do \
 	  key="$${pair%%=*}"; \
 	  grep -v "^$$key=" "$(RHDH_DIR)/.env" > "$(RHDH_DIR)/.env.tmp" 2>/dev/null || true; \
 	  mv "$(RHDH_DIR)/.env.tmp" "$(RHDH_DIR)/.env"; \
@@ -545,6 +573,14 @@ _seed-extensions:
 	  'includes: []' \
 	  'plugins: []' \
 	  > "$(RHDH_DIR)/dynamic-plugins-root/dynamic-plugins.extensions.yaml"
+	@VOL=$$(podman volume ls -q 2>/dev/null | grep -E '(^|_)dynamic-plugins-root$$' | head -1 || true); \
+	if [ -n "$$VOL" ]; then \
+	  echo "Seeding dynamic-plugins.extensions.yaml into volume $$VOL…"; \
+	  podman run --rm \
+	    -v "$$VOL:/dynamic-plugins-root" \
+	    -v "$(RHDH_DIR)/dynamic-plugins-root/dynamic-plugins.extensions.yaml:/seed.yaml:ro" \
+	    alpine sh -c 'cp /seed.yaml /dynamic-plugins-root/dynamic-plugins.extensions.yaml && chmod a+rw /dynamic-plugins-root/dynamic-plugins.extensions.yaml'; \
+	fi
 
 _export-plugins:
 	@command -v yarn >/dev/null || { echo "ERROR: yarn required for plugin export"; exit 1; }

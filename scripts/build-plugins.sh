@@ -14,8 +14,8 @@ DEST_DIR="$ROOT_DIR/local-plugins/portal"
 UPSTREAM_DIR="${1:-}"
 BRANCH="${2:-}"
 
-DEFAULT_PLUGINS="auth-backend-module-rhaap-provider catalog-backend-module-rhaap self-service scaffolder-backend-module-backstage-rhaap backstage-apme catalog-backend-module-apme"
-PLUGINS_LIST="${PLUGINS:-$DEFAULT_PLUGINS}"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib.sh"
 
 if [ -z "$UPSTREAM_DIR" ]; then
   echo "Usage: ./scripts/build-plugins.sh <path-to-ansible-backstage-plugins> [branch]"
@@ -26,6 +26,13 @@ if [ -z "$UPSTREAM_DIR" ]; then
 fi
 
 UPSTREAM_DIR="$(cd "$UPSTREAM_DIR" && pwd)"
+
+if [ -n "${PLUGINS:-}" ]; then
+  PLUGINS_LIST="$PLUGINS"
+else
+  # shellcheck disable=SC2207
+  PLUGINS_LIST="$(resolve_portal_plugins "$UPSTREAM_DIR")"
+fi
 
 if [ ! -d "$UPSTREAM_DIR/plugins" ]; then
   echo "ERROR: $UPSTREAM_DIR/plugins not found."
