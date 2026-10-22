@@ -6,6 +6,8 @@
 
 # Plugin tarballs (built or downloaded, not committed)
 local-plugins/portal/*.tgz
+local-plugins/portal/*.tgz.integrity
+local-plugins/portal-nfs/
 
 # OCI image archives (only present in distributable tar)
 images/
