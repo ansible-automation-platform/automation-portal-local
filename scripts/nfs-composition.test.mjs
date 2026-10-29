@@ -501,7 +501,8 @@ if (args[0] === 'wait') console.log(process.env.TEST_INSTALLER_EXIT || '0');
     assert.ok(
       exportCalls.every(
         (args) =>
-          JSON.stringify(args) === JSON.stringify(["run", "export-dynamic"])
+          JSON.stringify(args) ===
+          JSON.stringify(["run", "export-dynamic", "--clean"])
       )
     );
     const readCalls = () =>

@@ -252,6 +252,10 @@ removes installed plugins. Keep all selected exports current after SDK changes.
    make nfs-dev
    ```
 
+   Exports use RHDH CLI’s `--clean` option to regenerate dynamic output and its
+   embedded-package lockfile. This prevents stale generated hashes from failing
+   Yarn’s immutable install after source changes. The source lockfile is retained.
+
    Do not use `SKIP_EXPORT=1` after a branch switch or SDK change unless every
    affected export has already been rebuilt. Limit `EXPORT_PLUGINS` only when
    you know which host/contributor packages consume the changed code.

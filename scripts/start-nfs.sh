@@ -25,7 +25,7 @@ for item in $selected_plugins; do
   echo "Exporting $name (log: /tmp/anstrat-rhdh-export-$name.log)"
   (
     cd "$source_dir"
-    NODE_TLS_REJECT_UNAUTHORIZED=1 yarn run export-dynamic
+    NODE_TLS_REJECT_UNAUTHORIZED=1 yarn run export-dynamic --clean
   ) > "/tmp/anstrat-rhdh-export-$name.log" 2>&1 || { tail -40 "/tmp/anstrat-rhdh-export-$name.log"; exit 1; }
 done
 fi
