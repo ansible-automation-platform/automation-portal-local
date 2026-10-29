@@ -12,12 +12,21 @@ import {
   profilePaths,
   additionalPluginNames,
   deploymentPlugins,
+  usesAapMock,
 } from "./nfs-composition.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repo = process.env.PLUGIN_REPO;
 if (!repo) throw new Error("PLUGIN_REPO required for native composition tests");
 const yaml = createRequire(path.join(repo, "package.json"))("js-yaml");
+
+test("AAP auth selection matches the existing Makefile flag", () => {
+  assert.equal(usesAapMock({}), true);
+  for (const value of ["0", "false", "NO", "off"])
+    assert.equal(usesAapMock({ AAP_MOCK: value }), false);
+  for (const value of ["1", "true", "yes", "ON", ""])
+    assert.equal(usesAapMock({ AAP_MOCK: value }), true);
+});
 
 test("profile selection preserves default and PORTAL_ONLY compatibility", () => {
   assert.equal(resolveProfile({}), "full");
@@ -44,17 +53,32 @@ test("profile selection preserves default and PORTAL_ONLY compatibility", () => 
 });
 
 test("selection excludes artifacts, not merely sidebar links", () => {
-  assert.equal(selectPlugins("full").length, 12);
-  assert.equal(selectPlugins("scaffolder").length, 9);
-  assert.equal(selectPlugins("core").length, 7);
+  assert.equal(selectPlugins("full").length, 13);
+  assert.equal(selectPlugins("scaffolder").length, 10);
+  assert.equal(selectPlugins("core").length, 8);
   for (const profile of ["full", "scaffolder", "core"]) {
     const names = selectPlugins(profile).map(([, name]) => name);
     assert.ok(names.includes("aap-app-auth"));
+    assert.ok(names.includes("portal-rhdh"));
     assert.ok(names.includes("portal-operations-backend"));
     assert.equal(names.includes("portal-scaffolder"), profile !== "core");
     assert.equal(names.includes("backstage-apme"), profile === "full");
     assert.ok(!names.includes("portal-extension-api"));
     assert.ok(!names.includes("portal-extension-host"));
+    for (const [workspace, name] of selectPlugins(profile))
+      assert.ok(
+        fs.existsSync(
+          path.join(
+            repo,
+            "workspaces",
+            workspace,
+            "plugins",
+            name,
+            "package.json"
+          )
+        ),
+        `Selected plugin must exist in the current checkout: ${workspace}/${name}`
+      );
   }
 });
 
@@ -112,7 +136,7 @@ test("additional workspace plugins extend presets without changing the host inve
     "@team/scanner",
     "@team/worker",
   ]);
-  assert.deepEqual(deploymentPlugins(env).slice(7), [
+  assert.deepEqual(deploymentPlugins(env).slice(8), [
     ["custom", "scanner"],
     ["custom", "worker"],
   ]);
@@ -165,8 +189,11 @@ test("additional workspace plugins extend presets without changing the host inve
   }
 });
 
-for (const profile of ["full", "scaffolder", "core"]) {
-  test(`generated ${profile} workspace/packed configuration matches the selected exports`, (t) => {
+const scenarios = ["full", "scaffolder", "core"].flatMap((profile) =>
+  [true, false].map((mockAap) => ({ profile, mockAap }))
+);
+for (const { profile, mockAap } of scenarios) {
+  test(`generated ${profile} ${mockAap ? "mock" : "real-AAP"} workspace/packed configuration matches the selected exports`, (t) => {
     const temporary = fs.mkdtempSync(
       path.join(os.tmpdir(), "portal-composition-test-")
     );
@@ -211,7 +238,10 @@ for (const profile of ["full", "scaffolder", "core"]) {
       );
       fs.writeFileSync(
         path.join(output, "package.json"),
-        JSON.stringify({ name: `@ansible/${name}-dynamic`, version: "0.1.0" })
+        JSON.stringify({
+          name: `@ansible/${name}-dynamic`,
+          version: "0.1.0",
+        })
       );
     }
     const template = path.join(
@@ -224,10 +254,37 @@ for (const profile of ["full", "scaffolder", "core"]) {
       path.join(temporary, "overlay/app-config.portal.yaml"),
       yaml.dump({
         app: {},
-        ansible: { rhaap: {}, apme: {} },
-        auth: { providers: { rhaap: { development: {}, production: {} } } },
+        ansible: {
+          rhaap: { baseUrl: "${AAP_HOST_URL}", token: "${AAP_TOKEN}" },
+          apme: {},
+        },
+        auth: {
+          environment: "production",
+          providers: {
+            rhaap: {
+              development: {
+                host: "${AAP_PUBLIC_URL}",
+                clientId: "${OAUTH_CLIENT_ID}",
+                clientSecret: "${OAUTH_CLIENT_SECRET}",
+              },
+              production: {
+                host: "${AAP_PUBLIC_URL}",
+                tokenHost: "https://tokens.example.test",
+                clientId: "${OAUTH_CLIENT_ID}",
+                clientSecret: "${OAUTH_CLIENT_SECRET}",
+              },
+            },
+          },
+        },
         catalog: {
-          providers: { rhaap: { development: {} } },
+          providers: {
+            rhaap: {
+              development: {
+                orgs: ["Default", "Engineering"],
+                multiOrgEnabled: true,
+              },
+            },
+          },
           locations: [
             { target: "/configs/apme-register-git-repository/template.yaml" },
           ],
@@ -242,6 +299,10 @@ for (const profile of ["full", "scaffolder", "core"]) {
       PORTAL_ONLY: "0",
       APME_BASE_URL: "https://gateway.example.test:8443",
       NFS_PACKAGE_MODE: "workspace",
+      AAP_MOCK: mockAap ? "1" : "0",
+      COMPOSE_PROFILES: "mock,stale-profile",
+      TEST_EXPECTED_PROFILES: mockAap ? "mock" : "",
+      OAUTH_CLIENT_SECRET: "must-not-be-inlined",
     };
     function run(script) {
       const result = spawnSync(
@@ -257,7 +318,56 @@ for (const profile of ["full", "scaffolder", "core"]) {
     const load = (relative) =>
       yaml.load(fs.readFileSync(path.join(temporary, relative), "utf8"));
     const config = load(paths.config);
+    for (const entry of [
+      { "gh-component:global-header/self-service-button": false },
+      { "gh-menu-item:global-header/logout": mockAap },
+      { "app-profile-menu-item:app/aap-logout": !mockAap },
+    ])
+      assert.ok(
+        config.app.extensions.some(
+          (item) => JSON.stringify(item) === JSON.stringify(entry)
+        )
+      );
     assert.equal(config.portal.development, undefined);
+    assert.equal(config.auth.environment, "production");
+    const providers = config.auth.providers.rhaap;
+    if (mockAap) {
+      assert.equal(config.ansible.rhaap.baseUrl, "http://aap-mock:8099");
+      assert.equal(providers.production.clientId, "portal-local-mock");
+      assert.deepEqual(config.catalog.providers.rhaap.development.orgs, [
+        "Default",
+      ]);
+      assert.equal(
+        config.catalog.providers.rhaap.development.multiOrgEnabled,
+        false
+      );
+    } else {
+      assert.deepEqual(config.ansible.rhaap, {
+        baseUrl: "${AAP_HOST_URL}",
+        token: "${AAP_TOKEN}",
+      });
+      assert.equal(providers.development.tokenHost, "${AAP_HOST_URL}");
+      assert.equal(
+        providers.production.tokenHost,
+        "https://tokens.example.test"
+      );
+      assert.equal(providers.production.host, "${AAP_PUBLIC_URL}");
+      assert.equal(providers.production.clientId, "${OAUTH_CLIENT_ID}");
+      assert.equal(providers.production.clientSecret, "${OAUTH_CLIENT_SECRET}");
+      assert.deepEqual(config.catalog.providers.rhaap.development.orgs, [
+        "Default",
+        "Engineering",
+      ]);
+      assert.equal(
+        config.catalog.providers.rhaap.development.multiOrgEnabled,
+        true
+      );
+      assert.ok(
+        !fs
+          .readFileSync(path.join(temporary, paths.config), "utf8")
+          .includes(env.OAUTH_CLIENT_SECRET)
+      );
+    }
     assert.equal(config.ansible.apme.enabled, profile === "full");
     assert.equal(
       config.ansible.apme.baseUrl,
@@ -272,9 +382,15 @@ for (const profile of ["full", "scaffolder", "core"]) {
     assert.deepEqual(compose.services.rhdh.depends_on.db, {
       condition: "service_healthy",
     });
-    assert.deepEqual(compose.services.rhdh.depends_on["aap-mock"], {
-      condition: "service_healthy",
-    });
+    assert.deepEqual(
+      compose.services.rhdh.depends_on["aap-mock"],
+      mockAap
+        ? {
+            condition: "service_healthy",
+          }
+        : undefined
+    );
+    assert.equal(Boolean(compose.services["aap-mock"]), mockAap);
     const before = fs.readFileSync(path.join(temporary, paths.dev), "utf8");
     const bad = load(paths.dev);
     bad.plugins.push({
@@ -351,6 +467,7 @@ require('node:fs').appendFileSync(process.env.TEST_EXPORT_CALLS, JSON.stringify(
       `#!${process.execPath}
 const fs = require('node:fs');
 const args = process.argv.slice(2);
+if (process.env.COMPOSE_PROFILES !== process.env.TEST_EXPECTED_PROFILES) process.exit(2);
 fs.appendFileSync(process.env.TEST_CALLS, JSON.stringify(args) + '\\n');
 if (args[0] === 'inspect') console.log(process.env.TEST_OWNER);
 if (args[0] === 'wait') console.log(process.env.TEST_INSTALLER_EXIT || '0');
@@ -365,7 +482,7 @@ if (args[0] === 'wait') console.log(process.env.TEST_INSTALLER_EXIT || '0');
       SKIP_EXPORT: "0",
       PORTAL_ENV_LOADED: "1",
       NFS_PREPARE_ONLY: "0",
-      AAP_MOCK: "1",
+      AAP_MOCK: mockAap ? "1" : "0",
       NFS_PACKAGE_MODE: "workspace",
     });
     const start = () =>
@@ -405,11 +522,18 @@ if (args[0] === 'wait') console.log(process.env.TEST_INSTALLER_EXIT || '0');
         (args) => args.includes("--no-recreate") && args.at(-1) === "db"
       )
     );
-    assert.ok(
+    assert.equal(
       readCalls().some(
         (args) => args.includes("--no-deps") && args.includes("aap-mock")
-      )
+      ),
+      mockAap
     );
+    if (!mockAap)
+      assert.ok(
+        readCalls().every(
+          (args) => !args.includes("aap-mock") && !args.includes("mock")
+        )
+      );
     assert.ok(
       readCalls().some(
         (args) =>

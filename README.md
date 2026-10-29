@@ -55,6 +55,13 @@ changes; an upstream checkout or fork can be used. That workflow uses
 `make apme` followed by `make nfs-dev`; the legacy commands below do not select
 the native overlays. Keep existing credentials and database volumes when switching.
 
+The native workflow installs the optional Portal RHDH adapter for contributed
+profile-menu items and removes the global Create button. Mock mode keeps stock
+Portal Sign out. With `AAP_MOCK=0`, the generator preserves your real AAP settings
+and enables AAP-owned OIDC Sign out. See the development guide's real-AAP setup
+and native-header sections. Generic SDK/contributor plugins do not depend on the
+RHDH header package.
+
 Day-to-day plugin work mounts each plugin's `dist-dynamic` into RHDH. Uses the built-in mock AAP server by default. APME is started via `make apme` (`tox -e up` in your apme clone) — `make dev` does this automatically when the Gateway is down.
 
 ```bash

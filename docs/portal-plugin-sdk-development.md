@@ -1,6 +1,6 @@
 # Developing Portal plugins and SDK with NFS
 
-This developer procedure runs the Portal plugins and SDK from your active development checkout on `quay.io/rhdh-community/rhdh:next-2.1`. RHDH discovers the Portal host, self-service pages, and APME declarations through native frontend features. APME runs in its own Podman pod. The current `nfs-dev` configuration uses mock AAP authentication; it is not a real-AAP deployment procedure.
+This developer procedure runs the Portal plugins and SDK from your active development checkout on `quay.io/rhdh-community/rhdh:next-2.1`. RHDH discovers the Portal host, portal-scaffolder pages, and APME declarations through native frontend features. APME runs in its own Podman pod. The `nfs-dev` workflow defaults to mock AAP authentication and supports an existing real AAP deployment with `AAP_MOCK=0`.
 
 ## SDK development scope
 
@@ -12,7 +12,7 @@ SDK libraries are not separate dynamic page plugins. Their changes are consumed 
 
 ## Prerequisites
 
-- Your plugin repository checkout contains the Portal SDK and native NFS changes on the branch you are developing. It can be an upstream checkout or a fork; no particular remote is required.
+- Your plugin repository checkout contains the Portal SDK, the `portal-rhdh` profile adapter, AAP OIDC logout, and the renamed `workspaces/portal-scaffolder` workspace. It can be an upstream checkout or a fork. Before [PR #954](https://github.com/ansible/ansible-backstage-plugins/pull/954) merges, use its branch for the profile/logout changes. After it merges, an updated `main` is sufficient.
 - The automation-portal-local checkout includes `scripts/start-nfs.sh`, `scripts/prepare-nfs.mjs`, and `scripts/refresh-nfs-cache.mjs`, plus initialized `rhdh-local` submodules.
 - Node.js 22 and Corepack/Yarn 4 are available in the plugin checkout, and plugin dependencies are installed.
 - Podman Compose is available. Your APME checkout has its documented `tox -e up` prerequisites and enough resources for the full stack.
@@ -55,7 +55,70 @@ SDK libraries are not separate dynamic page plugins. Their changes are consumed 
    RHDH_IMAGE=quay.io/rhdh-community/rhdh:next-2.1
    ```
 
-   These are the minimal checkout/image settings for the full-stack native development path; retain the remaining required values from `.env.example`.
+   These are the minimal checkout/image settings for the full-stack mock development path. Retain the remaining required values from `.env.example`. To use your existing AAP deployment, follow the real-AAP procedure below.
+
+## Configuring real AAP
+
+### Prerequisites
+
+- Your AAP deployment advertises `/o/logout/` as its OIDC end-session endpoint.
+- You have a registered Portal OAuth application and its client ID, client secret, and catalog API token.
+- The AAP API is reachable from the RHDH container and any APME pod. Its public URL is reachable from your browser.
+
+### Procedure
+
+1. Update the existing `.env` with your AAP values. Preserve unrelated credentials.
+
+   ```dotenv
+   AAP_MOCK=0
+   AAP_HOST_URL=https://aap.example.com
+   AAP_PUBLIC_URL=https://aap.example.com
+   AAP_TOKEN=<catalog-api-token>
+   OAUTH_CLIENT_ID=<portal-client-id>
+   OAUTH_CLIENT_SECRET=<portal-client-secret>
+   ```
+
+   Use a container-reachable `AAP_HOST_URL` and browser-facing `AAP_PUBLIC_URL`.
+   They can differ. The generator retains the provider settings and organization
+   policy from `overlay/app-config.portal.yaml`. It defaults an absent provider
+   `tokenHost` to `${AAP_HOST_URL}`. An explicitly configured `tokenHost` is retained.
+   Credentials remain environment references in the generated YAML.
+
+2. In the same AAP OAuth application, register the redirect URI
+   `http://localhost:7007/api/auth/rhaap/handler/frame`. Register
+   `http://localhost:7007/` under **Post Logout Redirect URIs**.
+
+   The logout URI must exactly match the serialized Portal base URL
+   (`new URL(appBaseUrl).href`). The default RHDH `BASE_URL` is
+   `http://localhost:7007`, which serializes with the trailing slash. If you
+   change `BASE_URL` or override `app.baseUrl`, update both registrations.
+   For a separately running source app, register its configured backend callback
+   and its post-logout URI `http://localhost:3000/` in the matching application.
+
+3. Prepare the artifacts and configuration before changing running services:
+
+   ```bash
+   NFS_PREPARE_ONLY=1 make nfs-dev
+   ```
+
+4. Start APME with `make apme` if your selected preset includes it, then start RHDH:
+
+   ```bash
+   SKIP_EXPORT=1 make nfs-dev
+   ```
+
+   For packed artifacts, use `NFS_PACKAGE_MODE=packed` in both commands.
+   Real-AAP mode does not start or recreate `aap-mock`. An existing mock
+   container is left untouched. PostgreSQL volumes and the APME pod are preserved.
+
+### Verification
+
+Sign in at `http://localhost:7007` using AAP. Open the account menu and verify
+one **Sign out** item. Select it, confirm logout in AAP, and verify that AAP
+returns you to Portal sign-in. Cancelling the confirmation leaves the AAP
+browser session active even though Portal auth is cleared. This manual check
+is required for your AAP instance. Automated configuration tests do not prove
+that its redirect registrations or token revocation work.
 
 ## Starting the stack
 
@@ -74,9 +137,9 @@ SDK libraries are not separate dynamic page plugins. Their changes are consumed 
    make nfs-dev
    ```
 
-   By default, the script exports 12 Portal frontend/backend packages from the workspace checkout, generates native deployment overlays, installs them alongside stock RBAC, and refreshes mutable Module Federation metadata timestamps. It recreates only this checkout's RHDH and one-shot installer containers. The stateless AAP mock can be recreated to pick up OAuth configuration; PostgreSQL, database volumes, and the separate APME pod are preserved. Stock OCI resolution can take several minutes.
+   By default, the script exports 13 Portal frontend/backend packages from the workspace checkout, generates native deployment overlays, installs them alongside stock RBAC, and refreshes mutable Module Federation metadata timestamps. This includes the optional `portal-rhdh` native header adapter. It recreates only this checkout's RHDH and one-shot installer containers. In mock mode, the stateless AAP mock can be recreated to pick up OAuth configuration. PostgreSQL, database volumes, and the separate APME pod are preserved. Stock OCI resolution can take several minutes.
 
-3. Open `http://localhost:7007` and select AAP sign-in. The generated NFS overlay uses the mock provider. No `portalFrontend=nfs` query parameter is required in RHDH.
+3. Open `http://localhost:7007` and select AAP sign-in. The generated NFS overlay uses your selected mock or real AAP provider. No `portalFrontend=nfs` query parameter is required in RHDH.
 
 ## Selecting development plugins
 
@@ -85,10 +148,10 @@ permissions, or SDK restrictions. Production installations select dynamic
 artifacts normally. For source-app presets and `app.packages.include`, use the
 plugin repository's root README, not a production configuration guide.
 
-- `PORTAL_PROFILE=full` is the default: 12 Portal packages, including
+- `PORTAL_PROFILE=full` is the default: 13 Portal packages, including
   portal-scaffolder and APME.
-- `PORTAL_PROFILE=scaffolder` selects nine packages and omits APME.
-- `PORTAL_PROFILE=core` selects seven packages and omits both contributors.
+- `PORTAL_PROFILE=scaffolder` selects ten packages and omits APME.
+- `PORTAL_PROFILE=core` selects eight packages and omits both contributors.
   Authentication and core services remain. Content pages still live in
   portal-scaffolder, so they are absent in this selection.
 - `PORTAL_ONLY=1` remains shorthand for the scaffolder preset when no profile
@@ -238,6 +301,54 @@ Use the native script rather than assuming legacy `make dev`, `make reload`, or 
 
 ## Sidebar configuration
 
+### Native header integration
+
+All three local selections install `@ansible/portal-rhdh` for profile-menu
+contributions. The global Create button is removed. Page-specific actions stay
+with their owning page and do not use a global Create contribution API.
+
+For real AAP (`AAP_MOCK=0`), the generator applies these native extension settings:
+
+```yaml
+app:
+  extensions:
+    - gh-component:global-header/self-service-button: false
+    - gh-menu-item:global-header/logout: false
+    - app-profile-menu-item:app/aap-logout: true
+```
+
+AAP logout is opt-in in the AAP auth module. Mock mode instead enables stock
+`gh-menu-item:global-header/logout` and disables the AAP contribution because
+the mock has no OIDC end-session endpoint. Stock logout clears Portal auth.
+The global Create button is disabled in both modes. The source app uses its
+own header and does not install this RHDH-specific adapter.
+
+The generic `gh-menu-item:portal-rhdh/profile` attachment renders accepted
+`AppProfileMenuItemBlueprint` navigation and lazy UI actions. New plugin items
+require no edits to the adapter. Profile actions declare either authenticated
+UI access or a required permission; backend mutations still use registered
+operations. The host checks visibility before loading action code and isolates
+failures from sibling items.
+
+Enable the AAP-owned `app-profile-menu-item:app/aap-logout` entry above and rebuild
+the host, adapter, and auth artifacts together. `portal-rhdh` has no AAP dependency.
+Keep stock logout when not opting in to AAP logout. The source app uses its own
+generic profile renderer and explicitly installs the AAP profile declaration.
+For real AAP logout, the deployment must advertise `/o/logout/` as its OIDC
+end-session endpoint. Register the serialized Portal `app.baseUrl`
+(`new URL(appBaseUrl).href`) in the OAuth application's **Post Logout Redirect
+URIs**: `http://localhost:7007/` for RHDH,
+and `http://localhost:3000/` for the source app. The field accepts space-separated
+URLs. Keep the configured OAuth environment's public `host` and `clientId`
+aligned with that application; the private token host and client secret are not
+exposed by the frontend auth schema. Restart/re-export after schema changes.
+Sign out clears Portal auth, opens AAP's confirmation screen, and returns to
+Portal sign-in after confirmation. Cancelling does not end the AAP browser
+session. The mock-backed preset does not certify this real-AAP flow. Neither
+the SDK nor this harness modifies gateway-wide logout allowlists.
+
+### Sidebar layout
+
 `scripts/prepare-nfs.mjs` owns the generated `overlay/app-config.portal.nfs.yaml`. Edit the generator rather than a generated file that will be overwritten on the next start.
 
 The complete navigation override is:
@@ -311,7 +422,7 @@ To switch a group to a direct link, remove `children` and supply exactly one `pa
    PLUGIN_REPO=/path/to/plugin-repository node scripts/check-nfs-parity.mjs
    ```
 
-   Expected: the selected profile's dev/tarball contracts match (12 Portal packages plus stock RBAC for the default full selection).
+   Expected: the selected profile's dev/tarball contracts match (13 Portal packages plus stock RBAC for the default full selection).
 
 3. After sign-in, verify the sidebar order is Templates, History, Execution Environments, Collections, Git repositories, then Administration and Settings at the bottom. Administration expands to show RBAC; Settings remains separate. Verify the old `/portal` routes show the standard not-found page and the header logo leads to Templates.
 4. Open the repository catalog and verify Add repository, Quality, Quality settings, and Violations. Open a supported repository to verify Quality, Quality activity, Dependencies, and the overview card.
@@ -355,7 +466,9 @@ Inspect APME engine/dependency logs. The previously observed scan aborted on una
 
 ## Scope and safety
 
-Validation targets `next-2.1` only. Its packed deployment was exercised with mock AAP authentication, native registration/deregistration and existing APME project preservation. Separately, the source NFS app was exercised with real AAP login and completed scan-only operations on the existing `my-ns-my-col` test repository. Its persisted scan count increased from two to four with one finding, and the selected Quality summary refreshed automatically. No remediation, branch, or PR was applied. This is not evidence of real-AAP authentication in the RHDH container or a successful scan of every repository.
+Validation targets `next-2.1` only. Earlier packed content checks used mock AAP authentication, native registration/deregistration and existing APME project preservation. Separately, the source NFS app was exercised with real AAP login and completed scan-only operations on the existing `my-ns-my-col` test repository. Its persisted scan count increased from two to four with one finding, and the selected Quality summary refreshed automatically. No remediation, branch, or PR was applied.
+
+Earlier manual real-AAP overrides exercised sign-in and a single native Sign out item before this generator support was added. The current profile-only header and generated real-AAP mode require fresh live acceptance. Configuration and startup regression tests run without contacting AAP or changing containers. Intermittent token-exchange/revocation transport errors were observed in earlier checks. A browser redirect alone is not proof that server-side revocation succeeded. These checks are not evidence of a successful scan of every repository.
 
 Content extraction/query/write/picker migration is not delivered by NFS composition. The source development app defaults to NFS and retains `?portalFrontend=legacy` as an explicit fallback; that selector does not apply to the RHDH container's app shell.
 

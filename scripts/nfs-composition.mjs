@@ -6,6 +6,7 @@ import path from "node:path";
 /** Native deployment selection. Libraries are built through their consumers. */
 export const basePlugins = [
   ["portal-core", "portal-core"],
+  ["portal-core", "portal-rhdh"],
   ["aap", "aap-app-auth"],
   ["aap", "auth-backend-module-rhaap-provider"],
   ["aap", "catalog-backend-module-rhaap"],
@@ -13,6 +14,11 @@ export const basePlugins = [
   ["portal-core", "portal-operations-backend"],
   ["portal-core", "portal-health-backend"],
 ];
+
+/** Match the Makefile's AAP_MOCK flag without reading or copying credentials. */
+export function usesAapMock(env = process.env) {
+  return !/^(0|false|no|off)$/i.test(env.AAP_MOCK ?? "1");
+}
 
 export function resolveProfile(env = process.env) {
   const portalOnly = /^(1|true|yes|on)$/i.test(env.PORTAL_ONLY ?? "0");
@@ -49,7 +55,7 @@ export function selectPlugins(
     ...basePlugins,
     ...(profile !== "core"
       ? [
-          ["self-service", "portal-scaffolder"],
+          ["portal-scaffolder", "portal-scaffolder"],
           ["aap", "scaffolder-backend-module-backstage-rhaap"],
         ]
       : []),

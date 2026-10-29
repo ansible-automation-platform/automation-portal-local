@@ -7,11 +7,13 @@ import {
   deploymentPlugins,
   profilePaths,
   platformEntries,
+  usesAapMock,
 } from "./nfs-composition.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repo = process.env.PLUGIN_REPO;
 const packedMode = process.env.NFS_PACKAGE_MODE === "packed";
+const mockAap = usesAapMock();
 if (!repo || !fs.existsSync(path.join(repo, "workspaces")))
   throw new Error(
     "PLUGIN_REPO must point to the development workspace checkout"
@@ -33,8 +35,6 @@ const config = yaml.load(
 // RHDH 2.1 discovers frontend features, not legacy routes/mountPoints/API factories.
 delete config.dynamicPlugins;
 delete config.auth.signInPage;
-// Keep the existing real-AAP settings untouched; this deployment tests local mock auth.
-config.ansible.rhaap.baseUrl = "http://aap-mock:8099";
 config.ansible.apme = {
   ...config.ansible.apme,
   enabled: withApme,
@@ -43,24 +43,35 @@ config.ansible.apme = {
     config.ansible.apme?.baseUrl ||
     "http://host.containers.internal:8080",
 };
-config.ansible.rhaap.token = "local-mock-token";
-for (const environment of ["development", "production"]) {
-  Object.assign(config.auth.providers.rhaap[environment], {
-    host: "http://localhost:8099",
-    tokenHost: "http://aap-mock:8099",
-    clientId: "portal-local-mock",
-    clientSecret: "portal-local-mock-secret",
-  });
+if (mockAap) {
+  config.ansible.rhaap.baseUrl = "http://aap-mock:8099";
+  config.ansible.rhaap.token = "local-mock-token";
+  for (const environment of ["development", "production"]) {
+    Object.assign(config.auth.providers.rhaap[environment], {
+      host: "http://localhost:8099",
+      tokenHost: "http://aap-mock:8099",
+      clientId: "portal-local-mock",
+      clientSecret: "portal-local-mock-secret",
+    });
+  }
+  config.catalog.providers.rhaap.development.orgs = ["Default"];
+  config.catalog.providers.rhaap.development.multiOrgEnabled = false;
+} else {
+  // Keep real credentials as environment references and retain organization policy.
+  for (const provider of Object.values(config.auth.providers.rhaap)) {
+    provider.tokenHost ??= "${AAP_HOST_URL}";
+  }
 }
 config.app.extensions = [
   { "sign-in-page:app": false },
   { "sign-in-page:app/rhaap": true },
   { "nav-content:app/sidebar": false },
   { "nav-content:app/portal": true },
+  // The mock has no OIDC end-session endpoint, so retain stock Portal-only logout.
+  { "gh-component:global-header/self-service-button": false },
+  { "gh-menu-item:global-header/logout": mockAap },
+  { "app-profile-menu-item:app/aap-logout": !mockAap },
 ];
-// Mock acceptance uses one configured organization; real memberships stay server-owned.
-config.catalog.providers.rhaap.development.orgs = ["Default"];
-config.catalog.providers.rhaap.development.multiOrgEnabled = false;
 config.portal = {
   ...config.portal,
   entitlements: config.portal?.entitlements ?? {
@@ -124,14 +135,18 @@ const mounts = plugins.map(
 // Distinct installation roots prevent omitted plugins surviving a profile change.
 const installed = `./${paths.installed}`;
 const services = {
-  "aap-mock": {
-    environment: {
-      AAP_PUBLIC_URL: "http://localhost:8099",
-      AAP_TOKEN: "local-mock-token",
-      OAUTH_CLIENT_ID: "portal-local-mock",
-      OAUTH_CLIENT_SECRET: "portal-local-mock-secret",
-    },
-  },
+  ...(mockAap
+    ? {
+        "aap-mock": {
+          environment: {
+            AAP_PUBLIC_URL: "http://localhost:8099",
+            AAP_TOKEN: "local-mock-token",
+            OAUTH_CLIENT_ID: "portal-local-mock",
+            OAUTH_CLIENT_SECRET: "portal-local-mock-secret",
+          },
+        },
+      }
+    : {}),
   "install-dynamic-plugins": {
     environment: { NODE_TLS_REJECT_UNAUTHORIZED: "1" },
     volumes: [
@@ -149,7 +164,7 @@ const services = {
   rhdh: {
     depends_on: {
       db: { condition: "service_healthy" },
-      "aap-mock": { condition: "service_healthy" },
+      ...(mockAap ? { "aap-mock": { condition: "service_healthy" } } : {}),
     },
     networks: ["default"],
     environment: { NODE_TLS_REJECT_UNAUTHORIZED: "1" },

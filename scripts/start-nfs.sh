@@ -7,7 +7,11 @@ if [ "${PORTAL_ENV_LOADED:-0}" != 1 ] && [ -f .env ]; then
   source .env
   set +a
 fi
-test "${AAP_MOCK:-1}" = 1 || { echo 'Native local deployment currently requires AAP_MOCK=1'; exit 1; }
+export AAP_MOCK
+AAP_MOCK="$(node --input-type=module -e 'import {usesAapMock} from "./scripts/nfs-composition.mjs"; console.log(usesAapMock() ? "1" : "0")')"
+COMPOSE_PROFILES=""
+if [ "$AAP_MOCK" = 1 ]; then COMPOSE_PROFILES=mock; fi
+export COMPOSE_PROFILES
 # Resolve before exports or writes; reject invalid/conflicting selections early.
 selected_plugins="$(node scripts/nfs-composition.mjs)"
 compose_overlay="$(node --input-type=module -e 'import {resolveProfile,profilePaths} from "./scripts/nfs-composition.mjs"; console.log(profilePaths(resolveProfile()).compose)')"
@@ -34,7 +38,7 @@ fi
 if [ "${NFS_PACKAGE_MODE:-workspace}" = packed ]; then
   node scripts/pack-nfs.mjs
 fi
-make _env-files _overlays
+make _env-files _overlays AAP_MOCK="$AAP_MOCK"
 cd rhdh-local
 # Runtime containers retain bind mounts and --requires dependencies. Recreate
 # only this checkout's app/installer; never remove database/mock containers or volumes.
@@ -52,13 +56,15 @@ for container in rhdh rhdh-plugins-installer; do
     podman rm --force "$container"
   fi
 done
-podman compose -f compose.yaml -f compose.portal.yaml -f "../$compose_overlay" --profile mock up -d --no-recreate db
+podman compose -f compose.yaml -f compose.portal.yaml -f "../$compose_overlay" up -d --no-recreate db
 # The mock is stateless and must pick up changed OAuth settings. Do not let
 # Compose's dependency traversal recreate the persistent database container.
-podman compose -f compose.yaml -f compose.portal.yaml -f "../$compose_overlay" --profile mock up -d --no-deps aap-mock install-dynamic-plugins
+set -- install-dynamic-plugins
+if [ "$AAP_MOCK" = 1 ]; then set -- aap-mock "$@"; fi
+podman compose -f compose.yaml -f compose.portal.yaml -f "../$compose_overlay" up -d --no-deps "$@"
 installer_status="$(podman wait rhdh-plugins-installer)"
 test "$installer_status" = 0 || { echo "Plugin installer failed with exit $installer_status"; exit 1; }
 node "$TASK_ROOT/scripts/refresh-nfs-cache.mjs"
 # Prerequisites were started above and the installer already exited successfully.
 # Dependency traversal here would run it again and overwrite refreshed metadata.
-podman compose -f compose.yaml -f compose.portal.yaml -f "../$compose_overlay" --profile mock up -d --no-deps --no-recreate rhdh
+podman compose -f compose.yaml -f compose.portal.yaml -f "../$compose_overlay" up -d --no-deps --no-recreate rhdh
