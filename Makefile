@@ -5,6 +5,8 @@
 # Run `make help` to see available targets.
 
 .DEFAULT_GOAL := help
+nfs-dev:
+	PORTAL_ENV_LOADED=1 bash scripts/start-nfs.sh
 SHELL         := /bin/bash
 .SHELLFLAGS   := -euo pipefail -c
 
@@ -76,6 +78,8 @@ endif
 COMPOSE_PROFILES := $(shell echo '$(_PROFILES)' | tr ' ' ',')
 
 export COMPOSE_PROFILES APME_BASE_URL PLUGIN_REPO APME_REPO SKIP_BUILD FORCE_EXPORT AAP_MOCK PORTAL_ONLY
+export PORTAL_PROFILE NFS_PACKAGE_MODE NFS_PREPARE_ONLY SKIP_EXPORT EXPORT_PLUGINS
+export PORTAL_EXTRA_PLUGINS
 
 # ── Compose file sets ────────────────────────────────────────────────
 COMPOSE_F     := -f compose.yaml -f compose.portal.yaml
@@ -177,6 +181,9 @@ start: check-plugin-parity _check-env _prereqs _wipe-data _stop-if-running _remo
 
 check-plugin-parity: ## Fail if DEV vs tarball dynamic-plugins host contracts drift
 	@python3 "$(ROOT_DIR)/scripts/check-plugin-config-parity.py"
+
+check-nfs-parity: ## Validate the selected native workspace/packed profile
+	@node "$(ROOT_DIR)/scripts/check-nfs-parity.mjs"
 
 stop: ## Stop Portal compose services (APME keeps running — use make apme-down)
 	@if [ ! -f "$(RHDH_DIR)/compose.portal.yaml" ]; then \
