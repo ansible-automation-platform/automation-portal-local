@@ -12,7 +12,7 @@ SDK libraries are not separate dynamic page plugins. Their changes are consumed 
 
 ## Prerequisites
 
-- Your plugin repository checkout contains the Portal SDK, the `portal-rhdh` profile adapter, AAP OIDC logout, and the renamed `workspaces/portal-scaffolder` workspace. It can be an upstream checkout or a fork. Before [PR #954](https://github.com/ansible/ansible-backstage-plugins/pull/954) merges, use its branch for the profile/logout changes. After it merges, an updated `main` is sufficient.
+- Your plugin repository checkout contains the Portal SDK, the `portal-rhdh` profile adapter, AAP OIDC logout, and the current `content-development` and `content-management` workspaces. It must include the split AAP/content-development scaffolder modules and complete backend dynamic-export dependency lists. An upstream checkout or fork can be used. Re-export host and contributors from the same compatible revision.
 - The automation-portal-local checkout includes `scripts/start-nfs.sh`, `scripts/prepare-nfs.mjs`, and `scripts/refresh-nfs-cache.mjs`, plus initialized `rhdh-local` submodules.
 - Node.js 22 and Corepack/Yarn 4 are available in the plugin checkout, and plugin dependencies are installed.
 - Podman Compose is available. Your APME checkout has its documented `tox -e up` prerequisites and enough resources for the full stack.
@@ -57,6 +57,31 @@ SDK libraries are not separate dynamic page plugins. Their changes are consumed 
 
    These are the minimal checkout/image settings for the full-stack mock development path. Retain the remaining required values from `.env.example`. To use your existing AAP deployment, follow the real-AAP procedure below.
 
+## Connecting RHDH to a local APME pod
+
+If RHDH cannot reach the local gateway through `host.containers.internal`,
+attach it to the existing APME Podman network. Start APME first and inspect
+its network:
+
+```bash
+make apme
+podman pod inspect apme-pod --format '{{json .InfraConfig.Networks}}'
+```
+
+For the default APME pod network, set these non-secret values in `.env`:
+
+```dotenv
+APME_NETWORK=podman-default-kube-network
+APME_BASE_URL=http://gateway:8080
+```
+
+Use the actual network name from your pod. The generator adds an external
+network attachment only when APME is selected. It does not create or delete
+the APME network. `gateway` is the APME pod's DNS alias, reachable inside
+that network. For a remote APME service, leave `APME_NETWORK` unset and
+configure its reachable URL instead. Reduced profiles do not attach the
+optional network.
+
 ## Configuring real AAP
 
 ### Prerequisites
@@ -95,19 +120,19 @@ SDK libraries are not separate dynamic page plugins. Their changes are consumed 
    For a separately running source app, register its configured backend callback
    and its post-logout URI `http://localhost:3000/` in the matching application.
 
-3. Prepare the artifacts and configuration before changing running services:
+3. Start APME with `make apme` if your selected preset includes it, then export, pack and start RHDH once:
 
    ```bash
-   NFS_PREPARE_ONLY=1 make nfs-dev
+   make apme
+   make nfs-dev AAP_MOCK=0 PORTAL_ONLY=0 \
+     PORTAL_PROFILE=full NFS_PACKAGE_MODE=packed
    ```
 
-4. Start APME with `make apme` if your selected preset includes it, then start RHDH:
+   To inspect generated configuration before starting services, add
+   `NFS_PREPARE_ONLY=1` to the native command. Then rerun it with
+   `SKIP_EXPORT=1` instead of `NFS_PREPARE_ONLY=1`; the second invocation reuses
+   the exports. This two-step inspection is optional.
 
-   ```bash
-   SKIP_EXPORT=1 make nfs-dev
-   ```
-
-   For packed artifacts, use `NFS_PACKAGE_MODE=packed` in both commands.
    Real-AAP mode does not start or recreate `aap-mock`. An existing mock
    container is left untouched. PostgreSQL volumes and the APME pod are preserved.
 
@@ -137,7 +162,7 @@ that its redirect registrations or token revocation work.
    make nfs-dev
    ```
 
-   By default, the script exports 13 Portal frontend/backend packages from the workspace checkout, generates native deployment overlays, installs them alongside stock RBAC, and refreshes mutable Module Federation metadata timestamps. This includes the optional `portal-rhdh` native header adapter. It recreates only this checkout's RHDH and one-shot installer containers. In mock mode, the stateless AAP mock can be recreated to pick up OAuth configuration. PostgreSQL, database volumes, and the separate APME pod are preserved. Stock OCI resolution can take several minutes.
+   By default, the script exports 19 Portal frontend/backend packages from the workspace checkout, generates native deployment overlays, installs them alongside stock RBAC, and refreshes mutable Module Federation metadata timestamps. This includes the optional `portal-rhdh` native header adapter. It recreates only this checkout's RHDH and one-shot installer containers. In mock mode, the stateless AAP mock can be recreated to pick up OAuth configuration. PostgreSQL, database volumes, and the separate APME pod are preserved. Stock OCI resolution can take several minutes.
 
 3. Open `http://localhost:7007` and select AAP sign-in. The generated NFS overlay uses your selected mock or real AAP provider. No `portalFrontend=nfs` query parameter is required in RHDH.
 
@@ -148,9 +173,10 @@ permissions, or SDK restrictions. Production installations select dynamic
 artifacts normally. For source-app presets and `app.packages.include`, use the
 plugin repository's root README, not a production configuration guide.
 
-- `PORTAL_PROFILE=full` is the default: 13 Portal packages, including
-  portal-scaffolder and APME.
-- `PORTAL_PROFILE=scaffolder` selects ten packages and omits APME.
+- `PORTAL_PROFILE=full` is the default: 19 Portal packages, including
+  AAP integration, portal-scaffolder, content management and APME.
+- `PORTAL_PROFILE=scaffolder` selects twelve packages and omits APME and
+  the optional Ansible overview/content-management plugins.
 - `PORTAL_PROFILE=core` selects eight packages and omits both contributors.
   Authentication and core services remain. Content pages still live in
   portal-scaffolder, so they are absent in this selection.
@@ -426,9 +452,9 @@ To switch a group to a direct link, remove `children` and supply exactly one `pa
    PLUGIN_REPO=/path/to/plugin-repository node scripts/check-nfs-parity.mjs
    ```
 
-   Expected: the selected profile's dev/tarball contracts match (13 Portal packages plus stock RBAC for the default full selection).
+   Expected: the selected profile's dev/tarball contracts match (19 Portal packages plus stock RBAC for the default full selection).
 
-3. After sign-in, verify the sidebar order is Templates, History, Execution Environments, Collections, Git repositories, then Administration and Settings at the bottom. Administration expands to show RBAC; Settings remains separate. Verify the old `/portal` routes show the standard not-found page and the header logo leads to Templates.
+3. After sign-in, verify the full-profile sidebar order is Ansible, Templates, History, Execution Environments, Collections, Git repositories, then Administration and Settings at the bottom. Administration expands to show RBAC; Settings remains separate. Verify the old `/portal` routes show the standard not-found page and the header logo leads to Templates.
 4. Open the repository catalog and verify Add repository, Quality, Quality settings, and Violations. Open a supported repository to verify Quality, Quality activity, Dependencies, and the overview card.
 5. Inspect a registration workflow without submitting it unless you intend to create Catalog data. Verify both `/self-service/create/tasks` and task-detail routes.
 

@@ -26,6 +26,7 @@ const paths = profilePaths(profile, packedMode);
 const withApme = plugins.some(
   ([workspace, name]) => workspace === "apme" && name === "backstage-apme"
 );
+const apmeNetwork = withApme ? process.env.APME_NETWORK : undefined;
 const dump = (value) => yaml.dump(value, { lineWidth: -1, noRefs: true });
 const save = (relative, value) =>
   fs.writeFileSync(path.join(root, relative), dump(value));
@@ -67,6 +68,8 @@ config.app.extensions = [
   { "sign-in-page:app/rhaap": true },
   { "nav-content:app/sidebar": false },
   { "nav-content:app/portal": true },
+  { "sub-page:automation-content/images": true },
+  { "sub-page:portal-scaffolder/ee-definitions": true },
   // The mock has no OIDC end-session endpoint, so retain stock Portal-only logout.
   { "gh-component:global-header/self-service-button": false },
   { "gh-menu-item:global-header/logout": mockAap },
@@ -84,11 +87,12 @@ config.portal = {
 config.portal.navigation = {
   topOffset: 64,
   items: [
+    { id: "ansible", page: "page:ansible", title: "Ansible" },
     { id: "templates", path: "/self-service", title: "Templates" },
     { id: "history", path: "/self-service/create/tasks", title: "History" },
     {
       id: "execution-environments",
-      path: "/self-service/ee",
+      page: "page:automation-content/ee",
       title: "Execution Environments",
     },
     {
@@ -166,7 +170,7 @@ const services = {
       db: { condition: "service_healthy" },
       ...(mockAap ? { "aap-mock": { condition: "service_healthy" } } : {}),
     },
-    networks: ["default"],
+    networks: ["default", ...(apmeNetwork ? ["apme"] : [])],
     environment: { NODE_TLS_REJECT_UNAUTHORIZED: "1" },
     volumes: [
       `${installed}:/opt/app-root/src/dynamic-plugins-root:z`,
@@ -179,6 +183,7 @@ save(paths.compose, {
   services,
   networks: {
     default: {},
+    ...(apmeNetwork ? { apme: { external: true, name: apmeNetwork } } : {}),
   },
 });
 const entries = plugins.map(([, name]) => ({

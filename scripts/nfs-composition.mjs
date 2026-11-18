@@ -55,8 +55,13 @@ export function selectPlugins(
     ...basePlugins,
     ...(profile !== "core"
       ? [
-          ["portal-scaffolder", "portal-scaffolder"],
-          ["aap", "scaffolder-backend-module-backstage-rhaap"],
+          ["content-development", "portal-scaffolder"],
+          ["aap", "scaffolder-backend-module-aap"],
+          ["content-development", "catalog-backend-module-content-development"],
+          [
+            "content-development",
+            "scaffolder-backend-module-content-development",
+          ],
         ]
       : []),
     ...(profile === "full"
@@ -64,6 +69,10 @@ export function selectPlugins(
           ["apme", "backstage-apme"],
           ["apme", "catalog-backend-module-apme"],
           ["apme", "scaffolder-backend-module-apme"],
+          ["aap", "backstage-rhaap"],
+          ["content-management", "automation-content"],
+          ["content-management", "automation-content-backend"],
+          ["content-management", "catalog-backend-module-automation-content"],
         ]
       : []),
   ];

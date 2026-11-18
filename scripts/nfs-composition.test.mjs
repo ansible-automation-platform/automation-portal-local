@@ -53,8 +53,8 @@ test("profile selection preserves default and PORTAL_ONLY compatibility", () => 
 });
 
 test("selection excludes artifacts, not merely sidebar links", () => {
-  assert.equal(selectPlugins("full").length, 13);
-  assert.equal(selectPlugins("scaffolder").length, 10);
+  assert.equal(selectPlugins("full").length, 19);
+  assert.equal(selectPlugins("scaffolder").length, 12);
   assert.equal(selectPlugins("core").length, 8);
   for (const profile of ["full", "scaffolder", "core"]) {
     const names = selectPlugins(profile).map(([, name]) => name);
@@ -193,7 +193,9 @@ const scenarios = ["full", "scaffolder", "core"].flatMap((profile) =>
   [true, false].map((mockAap) => ({ profile, mockAap }))
 );
 for (const { profile, mockAap } of scenarios) {
-  test(`generated ${profile} ${mockAap ? "mock" : "real-AAP"} workspace/packed configuration matches the selected exports`, (t) => {
+  test(`generated ${profile} ${
+    mockAap ? "mock" : "real-AAP"
+  } workspace/packed configuration matches the selected exports`, (t) => {
     const temporary = fs.mkdtempSync(
       path.join(os.tmpdir(), "portal-composition-test-")
     );
@@ -298,6 +300,7 @@ for (const { profile, mockAap } of scenarios) {
       PORTAL_PROFILE: profile,
       PORTAL_ONLY: "0",
       APME_BASE_URL: "https://gateway.example.test:8443",
+      APME_NETWORK: mockAap ? "" : "test-apme-network",
       NFS_PACKAGE_MODE: "workspace",
       AAP_MOCK: mockAap ? "1" : "0",
       COMPOSE_PROFILES: "mock,stale-profile",
@@ -378,7 +381,17 @@ for (const { profile, mockAap } of scenarios) {
     const mounts = compose.services.rhdh.volumes.join("\n");
     assert.equal(mounts.includes("/portal-scaffolder/"), profile !== "core");
     assert.equal(mounts.includes("/backstage-apme/"), profile === "full");
-    assert.deepEqual(compose.services.rhdh.networks, ["default"]);
+    const sharedApmeNetwork = profile === "full" && !mockAap;
+    assert.deepEqual(
+      compose.services.rhdh.networks,
+      sharedApmeNetwork ? ["default", "apme"] : ["default"]
+    );
+    assert.deepEqual(
+      compose.networks.apme,
+      sharedApmeNetwork
+        ? { external: true, name: "test-apme-network" }
+        : undefined
+    );
     assert.deepEqual(compose.services.rhdh.depends_on.db, {
       condition: "service_healthy",
     });
