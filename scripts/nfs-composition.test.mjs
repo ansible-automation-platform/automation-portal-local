@@ -53,12 +53,13 @@ test("profile selection preserves default and PORTAL_ONLY compatibility", () => 
 });
 
 test("selection excludes artifacts, not merely sidebar links", () => {
-  assert.equal(selectPlugins("full").length, 19);
-  assert.equal(selectPlugins("scaffolder").length, 12);
-  assert.equal(selectPlugins("core").length, 8);
+  assert.equal(selectPlugins("full").length, 20);
+  assert.equal(selectPlugins("scaffolder").length, 13);
+  assert.equal(selectPlugins("core").length, 9);
   for (const profile of ["full", "scaffolder", "core"]) {
     const names = selectPlugins(profile).map(([, name]) => name);
     assert.ok(names.includes("aap-app-auth"));
+    assert.ok(names.includes("aap-backend"));
     assert.ok(names.includes("portal-rhdh"));
     assert.ok(names.includes("portal-operations-backend"));
     assert.equal(names.includes("portal-scaffolder"), profile !== "core");
@@ -136,7 +137,7 @@ test("additional workspace plugins extend presets without changing the host inve
     "@team/scanner",
     "@team/worker",
   ]);
-  assert.deepEqual(deploymentPlugins(env).slice(8), [
+  assert.deepEqual(deploymentPlugins(env).slice(selectPlugins("core").length), [
     ["custom", "scanner"],
     ["custom", "worker"],
   ]);
@@ -332,6 +333,16 @@ for (const { profile, mockAap } of scenarios) {
         )
       );
     assert.equal(config.portal.development, undefined);
+    assert.equal(config.portal.navigation.topOffset, 0);
+    assert.equal(
+      config.portal.navigation.items.find((item) => item.id === "templates").path,
+      "/create"
+    );
+    assert.equal(
+      config.portal.navigation.items.find((item) => item.id === "templates").title,
+      "Self-service"
+    );
+    assert.ok(!config.portal.navigation.items.some((item) => item.id === "history"));
     assert.equal(config.auth.environment, "production");
     const providers = config.auth.providers.rhaap;
     if (mockAap) {

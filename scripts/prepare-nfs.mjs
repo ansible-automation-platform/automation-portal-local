@@ -70,6 +70,9 @@ config.app.extensions = [
   { "nav-content:app/portal": true },
   { "sub-page:automation-content/images": true },
   { "sub-page:portal-scaffolder/ee-definitions": true },
+  { "sub-page:scaffolder/actions": false },
+  { "sub-page:scaffolder/editor": false },
+  { "sub-page:scaffolder/templating-extensions": false },
   // The mock has no OIDC end-session endpoint, so retain stock Portal-only logout.
   { "gh-component:global-header/self-service-button": false },
   { "gh-menu-item:global-header/logout": mockAap },
@@ -85,11 +88,10 @@ config.portal = {
 };
 // Filter navigation only: preserve platform APIs and direct compatibility routes.
 config.portal.navigation = {
-  topOffset: 64,
+  topOffset: 0,
   items: [
     { id: "ansible", page: "page:ansible", title: "Ansible" },
-    { id: "templates", path: "/self-service", title: "Templates" },
-    { id: "history", path: "/self-service/create/tasks", title: "History" },
+    { id: "templates", path: "/create", title: "Self-service" },
     {
       id: "execution-environments",
       page: "page:automation-content/ee",

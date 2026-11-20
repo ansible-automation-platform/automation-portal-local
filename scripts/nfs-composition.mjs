@@ -8,6 +8,7 @@ export const basePlugins = [
   ["portal-core", "portal-core"],
   ["portal-core", "portal-rhdh"],
   ["aap", "aap-app-auth"],
+  ["aap", "aap-backend"],
   ["aap", "auth-backend-module-rhaap-provider"],
   ["aap", "catalog-backend-module-rhaap"],
   ["aap", "catalog-backend-module-rhaap-user-provisioner"],
