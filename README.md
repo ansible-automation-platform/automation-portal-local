@@ -10,6 +10,7 @@ This repository wraps [rhdh-local](https://github.com/redhat-developer/rhdh-loca
 
 - [Customer Quick Start](#customer-quick-start)
 - [Developer Quick Start](#developer-quick-start)
+- [Portal plugin and SDK development](docs/portal-plugin-sdk-development.md) — development checkout on RHDH next-2.1, optional `PORTAL_PROFILE` presets, and additional workspace plugins through `PORTAL_EXTRA_PLUGINS` (development/testing only)
 - [Deployment Modes](docs/deployment-modes.md) — portal-only vs full stack (external APME)
 - [Customer Guide](docs/customer-guide.md) — multi-org config, plugin updates, EC2 setup
 - [Troubleshooting](docs/troubleshooting.md) — OAuth, containers, plugins, networking
@@ -46,6 +47,20 @@ Portal UI: http://localhost:7007
 **Cleanup:** `make stop` or `make clean` (removes volumes).
 
 ## Developer Quick Start
+
+For Portal plugin and SDK development with native frontend composition on RHDH `next-2.1`,
+follow [Portal plugin and SDK development](docs/portal-plugin-sdk-development.md). Set
+`PLUGIN_REPO` to your development checkout and select the branch containing your
+changes; an upstream checkout or fork can be used. That workflow uses
+`make apme` followed by `make nfs-dev`; the legacy commands below do not select
+the native overlays. Keep existing credentials and database volumes when switching.
+
+The native workflow installs the optional Portal RHDH adapter for contributed
+profile-menu items and removes the global Create button. Mock mode keeps stock
+Portal Sign out. With `AAP_MOCK=0`, the generator preserves your real AAP settings
+and enables AAP-owned OIDC Sign out. See the development guide's real-AAP setup
+and native-header sections. Generic SDK/contributor plugins do not depend on the
+RHDH header package.
 
 Day-to-day plugin work mounts each plugin's `dist-dynamic` into RHDH. Uses the built-in mock AAP server by default. APME is started via `make apme` (`tox -e up` in your apme clone) — `make dev` does this automatically when the Gateway is down.
 
@@ -106,14 +121,14 @@ make start PLUGIN_REPO=/path/to/ansible-backstage-plugins
 
 Skip rebuild with pre-downloaded `.tgz`: `make start SKIP_BUILD=1`.
 
-| Plugin | Package | Required |
-|---|---|---|
-| auth-backend-module-rhaap-provider | `ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-*.tgz` | Always |
-| catalog-backend-module-rhaap | `ansible-backstage-plugin-catalog-backend-module-rhaap-dynamic-*.tgz` | Always |
-| self-service | `ansible-plugin-backstage-self-service-dynamic-*.tgz` | Always |
-| scaffolder-backend-module-backstage-rhaap | `ansible-plugin-scaffolder-backend-module-backstage-rhaap-dynamic-*.tgz` | Always |
-| backstage-apme | `ansible-plugin-backstage-apme-dynamic-*.tgz` | APME only |
-| catalog-backend-module-apme | `ansible-backstage-plugin-catalog-backend-module-apme-dynamic-*.tgz` | APME only |
+| Plugin                                    | Package                                                                     | Required  |
+| ----------------------------------------- | --------------------------------------------------------------------------- | --------- |
+| auth-backend-module-rhaap-provider        | `ansible-backstage-plugin-auth-backend-module-rhaap-provider-dynamic-*.tgz` | Always    |
+| catalog-backend-module-rhaap              | `ansible-backstage-plugin-catalog-backend-module-rhaap-dynamic-*.tgz`       | Always    |
+| self-service                              | `ansible-plugin-backstage-self-service-dynamic-*.tgz`                       | Always    |
+| scaffolder-backend-module-backstage-rhaap | `ansible-plugin-scaffolder-backend-module-backstage-rhaap-dynamic-*.tgz`    | Always    |
+| backstage-apme                            | `ansible-plugin-backstage-apme-dynamic-*.tgz`                               | APME only |
+| catalog-backend-module-apme               | `ansible-backstage-plugin-catalog-backend-module-apme-dynamic-*.tgz`        | APME only |
 
 ### Option C: Download from GitHub Actions workflow
 
@@ -121,38 +136,38 @@ No local Node.js required. See [EAP Distribution](#eap-distribution).
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `AAP_HOST_URL` | Yes | — | AAP controller URL |
-| `AAP_PUBLIC_URL` | No | same as `AAP_HOST_URL` | AAP URL reachable from browser (required when `AAP_MOCK=0`) |
-| `AAP_TOKEN` | Yes | — | AAP API token |
-| `OAUTH_CLIENT_ID` | Yes | — | RHAAP OAuth client ID |
-| `OAUTH_CLIENT_SECRET` | Yes | — | RHAAP OAuth client secret |
-| `AAP_MOCK` | No | `1` (on) | `0` disables mock AAP server |
-| `PORTAL_ONLY` | No | `0` | `1` disables APME plugins and skips `make apme` (IAG delivery) |
-| `PLUGIN_REPO` | Yes for `dev` | — | Path to ansible-backstage-plugins clone |
-| `APME_REPO` | Yes when APME enabled | `$HOME/github/apme` | Path to apme clone (`make apme`) |
-| `APME_BASE_URL` | No | `http://host.containers.internal:8080` | Gateway URL from RHDH (when `PORTAL_ONLY!=1`) |
-| `RHDH_IMAGE` | No | `quay.io/rhdh-community/rhdh:1.10` | RHDH base image |
-| `NODE_TLS_REJECT_UNAUTHORIZED` | No | `0` | Set to `0` for self-signed AAP certs (dev only) |
+| Variable                       | Required              | Default                                | Description                                                    |
+| ------------------------------ | --------------------- | -------------------------------------- | -------------------------------------------------------------- |
+| `AAP_HOST_URL`                 | Yes                   | —                                      | AAP controller URL                                             |
+| `AAP_PUBLIC_URL`               | No                    | same as `AAP_HOST_URL`                 | AAP URL reachable from browser (required when `AAP_MOCK=0`)    |
+| `AAP_TOKEN`                    | Yes                   | —                                      | AAP API token                                                  |
+| `OAUTH_CLIENT_ID`              | Yes                   | —                                      | RHAAP OAuth client ID                                          |
+| `OAUTH_CLIENT_SECRET`          | Yes                   | —                                      | RHAAP OAuth client secret                                      |
+| `AAP_MOCK`                     | No                    | `1` (on)                               | `0` disables mock AAP server                                   |
+| `PORTAL_ONLY`                  | No                    | `0`                                    | `1` disables APME plugins and skips `make apme` (IAG delivery) |
+| `PLUGIN_REPO`                  | Yes for `dev`         | —                                      | Path to ansible-backstage-plugins clone                        |
+| `APME_REPO`                    | Yes when APME enabled | `$HOME/github/apme`                    | Path to apme clone (`make apme`)                               |
+| `APME_BASE_URL`                | No                    | `http://host.containers.internal:8080` | Gateway URL from RHDH (when `PORTAL_ONLY!=1`)                  |
+| `RHDH_IMAGE`                   | No                    | `quay.io/rhdh-community/rhdh:1.10`     | RHDH base image                                                |
+| `NODE_TLS_REJECT_UNAUTHORIZED` | No                    | `0`                                    | Set to `0` for self-signed AAP certs (dev only)                |
 
 See `.env.example` for the full list including GitHub/GitLab and database variables.
 
 ## Make Targets
 
-| Target | Description |
-|---|---|
-| `make dev` | Dev loop: ensure APME + mount `dist-dynamic` + compose up |
-| `make start` | Tarball mode: ensure APME + build `.tgz` + start (`SKIP_BUILD=1` to reuse) |
-| `make apme` | Start APME (`cd APME_REPO && tox -e up`) |
-| `make apme-down` | Stop APME (`cd APME_REPO && tox -e down`) |
-| `make stop` | Stop Portal compose services (APME keeps running) |
-| `make reload` | Re-export changed plugins + restart rhdh |
-| `make reload-fe` | FE-only refresh (no restart) |
-| `make build-plugins` | Build plugin tarballs without starting |
-| `make clean` | Stop + remove volumes |
-| `make logs` | Follow compose logs |
-| `make status` | Show running containers |
+| Target               | Description                                                                |
+| -------------------- | -------------------------------------------------------------------------- |
+| `make dev`           | Dev loop: ensure APME + mount `dist-dynamic` + compose up                  |
+| `make start`         | Tarball mode: ensure APME + build `.tgz` + start (`SKIP_BUILD=1` to reuse) |
+| `make apme`          | Start APME (`cd APME_REPO && tox -e up`)                                   |
+| `make apme-down`     | Stop APME (`cd APME_REPO && tox -e down`)                                  |
+| `make stop`          | Stop Portal compose services (APME keeps running)                          |
+| `make reload`        | Re-export changed plugins + restart rhdh                                   |
+| `make reload-fe`     | FE-only refresh (no restart)                                               |
+| `make build-plugins` | Build plugin tarballs without starting                                     |
+| `make clean`         | Stop + remove volumes                                                      |
+| `make logs`          | Follow compose logs                                                        |
+| `make status`        | Show running containers                                                    |
 
 ## EAP Distribution
 
@@ -237,11 +252,11 @@ automation-portal-local/
 
 ## Relationship to Other Repos
 
-| Repo | Role |
-|---|---|
-| **automation-portal-local** (this repo) | Local compose wrapper over rhdh-local |
-| [rhdh-local](https://github.com/redhat-developer/rhdh-local) | Base RHDH compose setup (submodule) |
-| [ansible-backstage-plugins](https://github.com/ansible/ansible-backstage-plugins) | Portal plugin source code |
-| [ansible-rhdh-plugins](https://github.com/ansible-automation-platform/ansible-rhdh-plugins) | Plugin packaging + early-access CI |
-| [ansible-portal-chart](https://github.com/ansible-automation-platform/ansible-portal-chart) | Helm chart (OpenShift/K8s) |
-| [apme](https://github.com/ansible/apme) | APME engine — local pod via `make apme` (`tox -e up`) |
+| Repo                                                                                        | Role                                                  |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| **automation-portal-local** (this repo)                                                     | Local compose wrapper over rhdh-local                 |
+| [rhdh-local](https://github.com/redhat-developer/rhdh-local)                                | Base RHDH compose setup (submodule)                   |
+| [ansible-backstage-plugins](https://github.com/ansible/ansible-backstage-plugins)           | Portal plugin source code                             |
+| [ansible-rhdh-plugins](https://github.com/ansible-automation-platform/ansible-rhdh-plugins) | Plugin packaging + early-access CI                    |
+| [ansible-portal-chart](https://github.com/ansible-automation-platform/ansible-portal-chart) | Helm chart (OpenShift/K8s)                            |
+| [apme](https://github.com/ansible/apme)                                                     | APME engine — local pod via `make apme` (`tox -e up`) |
